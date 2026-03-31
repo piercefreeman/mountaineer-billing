@@ -308,6 +308,8 @@ Stripe often bumps the version of their API to include additional data or restru
 
 Use the standalone `uv` script in `scripts/` to clone Stripe's public OpenAPI repo history, deduplicate schema revisions by `info.version`, and generate versioned Pydantic packages under `mountaineer_billing/stripe/`. For now we limit ourselves to API definitions after 2023. Ones before had quite a bit of churn.
 
+See [docs/StripeTypes.md](docs/StripeTypes.md) for the rationale behind the generated typing layer, including why static type checking sees all Stripe versions while runtime validation stays lazy, and why we prune Stripe's full OpenAPI schema down to the object families we actually use.
+
 ```bash
 uv run scripts/generate_stripe_models.py
 ```
