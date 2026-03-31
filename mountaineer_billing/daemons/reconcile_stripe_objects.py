@@ -73,7 +73,7 @@ async def reconcile_dirty_stripe_objects(
                     config=config,
                 )
             else:
-                reconciled_payload = claimed_row.payload
+                reconciled_payload = claimed_row.generic_payload or {}
 
             root_key = (claimed_row.object_type, claimed_row.stripe_id)
             for (object_type, stripe_id), child_payload in supported_child_objects(

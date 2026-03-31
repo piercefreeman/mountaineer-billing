@@ -48,6 +48,97 @@ PATH_PRIORITY = {
 }
 HEARTBEAT_SECONDS = 10.0
 CONSOLE = Console()
+VERSION_DISCRIMINATOR_FIELD = "mountaineer_billing_api_version"
+SCHEMA_REF_PREFIX = "#/components/schemas/"
+SUPPORTED_STRIPE_OBJECT_TYPES = (
+    "charge",
+    "checkout.session",
+    "customer",
+    "invoice",
+    "payment_intent",
+    "price",
+    "product",
+    "subscription",
+)
+SCHEMA_KEYS_BY_OBJECT_TYPE = {
+    "event": "event",
+    "charge": "charge",
+    "checkout.session": "checkout.session",
+    "customer": "customer",
+    "invoice": "invoice",
+    "payment_intent": "payment_intent",
+    "price": "price",
+    "product": "product",
+    "subscription": "subscription",
+}
+TYPE_IMPORT_CANDIDATES: dict[str, tuple[tuple[str, str], ...]] = {
+    "event": (("models", "Event"),),
+    "charge": (("models", "ChargeModel"), ("models", "Charge")),
+    "checkout.session": (
+        ("models.checkout", "Session"),
+        ("models._internal", "Session"),
+    ),
+    "customer": (("models", "CustomerModel"), ("models", "Customer")),
+    "invoice": (("models", "InvoiceModel"), ("models", "Invoice")),
+    "payment_intent": (
+        ("models", "PaymentIntentModel"),
+        ("models", "PaymentIntent"),
+    ),
+    "price": (("models", "PriceModel"), ("models", "Price")),
+    "product": (("models", "ProductModel"), ("models", "Product")),
+    "subscription": (
+        ("models", "SubscriptionModel"),
+        ("models", "Subscription"),
+    ),
+}
+TYPE_ALIAS_NAMES = {
+    "event": "StripeEventPayload",
+    "charge": "StripeChargePayload",
+    "checkout.session": "StripeCheckoutSessionPayload",
+    "customer": "StripeCustomerPayload",
+    "invoice": "StripeInvoicePayload",
+    "payment_intent": "StripePaymentIntentPayload",
+    "price": "StripePricePayload",
+    "product": "StripeProductPayload",
+    "subscription": "StripeSubscriptionPayload",
+}
+TYPE_ADAPTER_NAMES = {
+    "event": "StripeEventAdapter",
+    "charge": "StripeChargeAdapter",
+    "checkout.session": "StripeCheckoutSessionAdapter",
+    "customer": "StripeCustomerAdapter",
+    "invoice": "StripeInvoiceAdapter",
+    "payment_intent": "StripePaymentIntentAdapter",
+    "price": "StripePriceAdapter",
+    "product": "StripeProductAdapter",
+    "subscription": "StripeSubscriptionAdapter",
+}
+DEFERRED_PYDANTIC_IMPORTS = {"BaseModel", "Field", "RootModel"}
+MODEL_REBUILD_PATTERN = re.compile(
+    r"(?m)^[A-Za-z_][A-Za-z0-9_]*\.model_rebuild\(\)\n?"
+)
+PYDANTIC_IMPORT_PATTERN = re.compile(r"(?m)^from pydantic import (?P<imports>.+)$")
+DEFERRED_MODELS_MODULE = """from __future__ import annotations
+
+from typing import Generic, TypeVar
+
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, Field
+from pydantic import RootModel as PydanticRootModel
+
+RootModelRootType = TypeVar("RootModelRootType")
+
+
+class BaseModel(PydanticBaseModel):
+    model_config = ConfigDict(defer_build=True)
+
+
+class RootModel(PydanticRootModel[RootModelRootType], Generic[RootModelRootType]):
+    model_config = ConfigDict(defer_build=True)
+
+
+__all__ = ["BaseModel", "Field", "RootModel"]
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +154,16 @@ class _RankedRevision:
     revision: StripeSchemaRevision
     commit_index: int
     path_priority: int
+
+
+@dataclass(frozen=True, slots=True)
+class StripeTypeImport:
+    api_version: str
+    package_name: str
+    object_type: str
+    import_path: str
+    symbol_name: str
+    alias_name: str
 
 
 def _run_command(
@@ -346,6 +447,234 @@ def _render_package_root_init() -> str:
     )
 
 
+def _inject_version_discriminator(
+    schema: dict[str, Any],
+    *,
+    api_version: str,
+) -> dict[str, Any]:
+    components = schema.get("components")
+    if not isinstance(components, dict):
+        raise RuntimeError("Stripe OpenAPI schema is missing components")
+
+    schema_components = components.get("schemas")
+    if not isinstance(schema_components, dict):
+        raise RuntimeError("Stripe OpenAPI schema is missing components.schemas")
+
+    for object_type, schema_key in SCHEMA_KEYS_BY_OBJECT_TYPE.items():
+        component = schema_components.get(schema_key)
+        if not isinstance(component, dict):
+            raise RuntimeError(
+                f"Stripe OpenAPI schema is missing {schema_key!r} for {object_type!r}"
+            )
+        if component.get("type") != "object":
+            raise RuntimeError(
+                f"Stripe OpenAPI schema component {schema_key!r} is not an object"
+            )
+
+        properties = component.setdefault("properties", {})
+        properties[VERSION_DISCRIMINATOR_FIELD] = {
+            "type": "string",
+            "enum": [api_version],
+        }
+
+        required = component.setdefault("required", [])
+        if VERSION_DISCRIMINATOR_FIELD not in required:
+            required.append(VERSION_DISCRIMINATOR_FIELD)
+
+    return schema
+
+
+def _iter_schema_refs(value: Any):
+    if isinstance(value, dict):
+        ref = value.get("$ref")
+        if isinstance(ref, str):
+            yield ref
+        for nested_value in value.values():
+            yield from _iter_schema_refs(nested_value)
+    elif isinstance(value, list):
+        for nested_value in value:
+            yield from _iter_schema_refs(nested_value)
+
+
+def _schema_key_from_ref(ref: str) -> str | None:
+    if not ref.startswith(SCHEMA_REF_PREFIX):
+        return None
+    return ref[len(SCHEMA_REF_PREFIX) :]
+
+
+def _prune_schema_for_codegen(schema: dict[str, Any]) -> dict[str, Any]:
+    components = schema.get("components")
+    if not isinstance(components, dict):
+        raise RuntimeError("Stripe OpenAPI schema is missing components")
+
+    schema_components = components.get("schemas")
+    if not isinstance(schema_components, dict):
+        raise RuntimeError("Stripe OpenAPI schema is missing components.schemas")
+
+    root_schema_keys = tuple(dict.fromkeys(SCHEMA_KEYS_BY_OBJECT_TYPE.values()))
+    pending_schema_keys = list(root_schema_keys)
+    reachable_schema_keys: set[str] = set()
+
+    while pending_schema_keys:
+        schema_key = pending_schema_keys.pop()
+        if schema_key in reachable_schema_keys:
+            continue
+
+        component = schema_components.get(schema_key)
+        if not isinstance(component, dict):
+            raise RuntimeError(
+                f"Stripe OpenAPI schema is missing schema component {schema_key!r}"
+            )
+
+        reachable_schema_keys.add(schema_key)
+        for ref in _iter_schema_refs(component):
+            ref_schema_key = _schema_key_from_ref(ref)
+            if ref_schema_key and ref_schema_key not in reachable_schema_keys:
+                pending_schema_keys.append(ref_schema_key)
+
+    schema["paths"] = {}
+    schema["components"] = {
+        "schemas": {
+            schema_key: schema_components[schema_key]
+            for schema_key in schema_components
+            if schema_key in reachable_schema_keys
+        }
+    }
+    return schema
+
+
+def _module_file_for_import(package_dir: Path, import_path: str) -> Path:
+    if import_path == "models":
+        return package_dir / "models" / "__init__.py"
+    return package_dir / Path(*import_path.split(".")).with_suffix(".py")
+
+
+def _module_contains_symbol(module_path: Path, symbol_name: str) -> bool:
+    if not module_path.exists():
+        return False
+    pattern = rf"\b{re.escape(symbol_name)}\b"
+    return re.search(pattern, module_path.read_text()) is not None
+
+
+def _type_import_alias(package_name: str, object_type: str) -> str:
+    normalized_object_type = re.sub(r"[^0-9a-zA-Z]+", "_", object_type).strip("_")
+    return f"{package_name}_{normalized_object_type}"
+
+
+def _resolve_type_import(
+    *,
+    output_dir: Path,
+    revision: StripeSchemaRevision,
+    object_type: str,
+) -> StripeTypeImport:
+    package_dir = output_dir / revision.package_name
+    for import_path, symbol_name in TYPE_IMPORT_CANDIDATES[object_type]:
+        module_path = _module_file_for_import(package_dir, import_path)
+        if _module_contains_symbol(module_path, symbol_name):
+            return StripeTypeImport(
+                api_version=revision.api_version,
+                package_name=revision.package_name,
+                object_type=object_type,
+                import_path=f".{revision.package_name}.{import_path}",
+                symbol_name=symbol_name,
+                alias_name=_type_import_alias(revision.package_name, object_type),
+            )
+
+    raise RuntimeError(
+        "Could not resolve generated Stripe type import for "
+        f"{object_type!r} in {revision.package_name}"
+    )
+
+
+def _render_types_module(
+    *,
+    output_dir: Path,
+    revisions: list[StripeSchemaRevision],
+) -> str:
+    imports_by_object_type: dict[str, list[StripeTypeImport]] = {}
+    for object_type in ("event", *SUPPORTED_STRIPE_OBJECT_TYPES):
+        imports_by_object_type[object_type] = [
+            _resolve_type_import(
+                output_dir=output_dir,
+                revision=revision,
+                object_type=object_type,
+            )
+            for revision in revisions
+        ]
+
+    import_lines = [
+        f"from {type_import.import_path} import "
+        f"{type_import.symbol_name} as {type_import.alias_name}"
+        for type_import in sorted(
+            (
+                type_import
+                for type_imports in imports_by_object_type.values()
+                for type_import in type_imports
+            ),
+            key=lambda value: (value.import_path, value.alias_name),
+        )
+    ]
+
+    lines = [
+        "# ruff: noqa: I001",
+        "from __future__ import annotations",
+        "",
+        "from typing import Annotated, TypeAlias",
+        "",
+        "from pydantic import Field, TypeAdapter",
+        "",
+        *import_lines,
+        "",
+    ]
+
+    for object_type in ("event", *SUPPORTED_STRIPE_OBJECT_TYPES):
+        alias_name = TYPE_ALIAS_NAMES[object_type]
+        type_imports = imports_by_object_type[object_type]
+        lines.extend(
+            [
+                f"{alias_name}: TypeAlias = Annotated[",
+                "    " + " | ".join(
+                    type_import.alias_name for type_import in type_imports
+                )
+                + ",",
+                f'    Field(discriminator="{VERSION_DISCRIMINATOR_FIELD}"),',
+                "]",
+                f"{TYPE_ADAPTER_NAMES[object_type]} = TypeAdapter({alias_name})",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "StripeObjectPayload: TypeAlias = (",
+            "    " + " | ".join(
+                TYPE_ALIAS_NAMES[object_type]
+                for object_type in SUPPORTED_STRIPE_OBJECT_TYPES
+            ),
+            ")",
+            "",
+        ]
+    )
+
+    all_names = [
+        TYPE_ALIAS_NAMES["event"],
+        *[TYPE_ALIAS_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
+        "StripeObjectPayload",
+        TYPE_ADAPTER_NAMES["event"],
+        *[TYPE_ADAPTER_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
+    ]
+    lines.extend(
+        [
+            "__all__ = [",
+            *[f'    "{name}",' for name in all_names],
+            "]",
+            "",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
 def _render_version_package_init(revision: StripeSchemaRevision) -> str:
     return "\n".join(
         [
@@ -361,19 +690,29 @@ def _render_version_package_init(revision: StripeSchemaRevision) -> str:
     )
 
 
-def _prepare_output_dir(output_dir: Path) -> None:
+def _prepare_output_dir(
+    output_dir: Path,
+    *,
+    selected_package_names: set[str] | None = None,
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for child in output_dir.iterdir():
         if not child.is_dir():
             continue
         if not child.name.startswith("v"):
             continue
+        if selected_package_names is not None and child.name not in selected_package_names:
+            continue
         shutil.rmtree(child)
 
 
 def _load_schema(repo_dir: Path, revision: StripeSchemaRevision) -> dict[str, Any]:
     raw_schema = _git_output(repo_dir, "show", f"{revision.commit_sha}:{revision.schema_path}")
-    return json.loads(raw_schema)
+    schema = _inject_version_discriminator(
+        json.loads(raw_schema),
+        api_version=revision.api_version,
+    )
+    return _prune_schema_for_codegen(schema)
 
 
 def _default_codegen_command() -> list[str]:
@@ -416,6 +755,63 @@ def _generate_models(
         command,
         description=f"Running datamodel-code-generator for Stripe {api_version}",
     )
+
+
+def _deferred_import_path(*, models_dir: Path, generated_file: Path) -> str:
+    relative_parts = generated_file.relative_to(models_dir).parts[:-1]
+    return "." * (len(relative_parts) + 1) + "_deferred"
+
+
+def _rewrite_pydantic_imports(
+    source: str,
+    *,
+    models_dir: Path,
+    generated_file: Path,
+) -> str:
+    deferred_import = _deferred_import_path(
+        models_dir=models_dir,
+        generated_file=generated_file,
+    )
+
+    def replace_import(match: re.Match[str]) -> str:
+        imported_names = [name.strip() for name in match.group("imports").split(",")]
+        deferred_names = [
+            name for name in imported_names if name in DEFERRED_PYDANTIC_IMPORTS
+        ]
+        if not deferred_names:
+            return match.group(0)
+
+        remaining_names = [
+            name for name in imported_names if name not in DEFERRED_PYDANTIC_IMPORTS
+        ]
+        rewritten_lines: list[str] = []
+        if remaining_names:
+            rewritten_lines.append(f"from pydantic import {', '.join(remaining_names)}")
+        rewritten_lines.append(
+            f"from {deferred_import} import {', '.join(deferred_names)}"
+        )
+        return "\n".join(rewritten_lines)
+
+    return PYDANTIC_IMPORT_PATTERN.sub(replace_import, source)
+
+
+def _postprocess_generated_models(models_dir: Path) -> None:
+    (models_dir / "_deferred.py").write_text(DEFERRED_MODELS_MODULE)
+
+    for generated_file in models_dir.rglob("*.py"):
+        if generated_file.name == "_deferred.py":
+            continue
+
+        original_source = generated_file.read_text()
+        rewritten_source = MODEL_REBUILD_PATTERN.sub("", original_source)
+        rewritten_source = _rewrite_pydantic_imports(
+            rewritten_source,
+            models_dir=models_dir,
+            generated_file=generated_file,
+        )
+
+        if rewritten_source != original_source:
+            generated_file.write_text(rewritten_source)
 
 
 def ensure_repo(
@@ -466,13 +862,14 @@ def generate_stripe_package(
     CONSOLE.log(f"[cyan]Minimum API year:[/cyan] [bold]{min_api_year}[/bold]")
 
     repo_dir = ensure_repo(repo_dir, repo_url=repo_url, fetch=fetch_repo)
-    revisions = collect_schema_revisions(repo_dir, include_preview=include_preview)
-    revisions = filter_revisions_by_min_year(revisions, min_api_year=min_api_year)
+    all_revisions = collect_schema_revisions(repo_dir, include_preview=include_preview)
+    all_revisions = filter_revisions_by_min_year(all_revisions, min_api_year=min_api_year)
 
+    revisions = all_revisions
     if selected_versions:
         revisions = [
             revision
-            for revision in revisions
+            for revision in all_revisions
             if revision.api_version in selected_versions
         ]
 
@@ -480,7 +877,15 @@ def generate_stripe_package(
         raise RuntimeError("No Stripe schemas found for generation")
 
     CONSOLE.log(f"[green]Found {len(revisions)} Stripe API version(s) to generate[/green]")
-    _prepare_output_dir(output_dir)
+    selected_package_names = (
+        {revision.package_name for revision in revisions}
+        if selected_versions
+        else None
+    )
+    _prepare_output_dir(
+        output_dir,
+        selected_package_names=selected_package_names,
+    )
     (output_dir / "__init__.py").write_text(_render_package_root_init())
     codegen_command_parts = _codegen_command_parts(codegen_command)
 
@@ -521,9 +926,18 @@ def generate_stripe_package(
                 codegen_command=codegen_command_parts,
                 api_version=revision.api_version,
             )
+            _postprocess_generated_models(package_dir / "models")
             progress.advance(generate_task)
 
-    (output_dir / "versions.json").write_text(_render_registry(revisions))
+    renderable_revisions = [
+        revision
+        for revision in all_revisions
+        if (output_dir / revision.package_name / "models").exists()
+    ]
+    (output_dir / "versions.json").write_text(_render_registry(renderable_revisions))
+    (output_dir / "types.py").write_text(
+        _render_types_module(output_dir=output_dir, revisions=renderable_revisions)
+    )
     CONSOLE.log(f"[green]Wrote Stripe model registry to[/green] [bold]{output_dir}[/bold]")
     return revisions
 

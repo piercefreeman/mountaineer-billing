@@ -19,6 +19,16 @@ from mountaineer_billing.config import BillingConfig
 from mountaineer_billing.dependencies.stripe import INTERNAL_USER_ID_KEY
 from mountaineer_billing.enums import StripeStatus, SyncStatus
 from mountaineer_billing.logging import LOGGER
+from mountaineer_billing.stripe.types import (
+    StripeChargeAdapter,
+    StripeCheckoutSessionAdapter,
+    StripeCustomerAdapter,
+    StripeInvoiceAdapter,
+    StripePaymentIntentAdapter,
+    StripePriceAdapter,
+    StripeProductAdapter,
+    StripeSubscriptionAdapter,
+)
 
 SUPPORTED_OBJECT_TYPES = {
     "charge",
@@ -323,13 +333,67 @@ async def upsert_stripe_object(
     last_error: str | None = None,
 ) -> None:
     now = utcnow()
+    payload_digest = payload_hash(payload)
+    hydrated_payload = (
+        models.payload_with_api_version(payload, api_version=api_version)
+        if object_type in SUPPORTED_OBJECT_TYPES
+        else None
+    )
     stripe_object = config.BILLING_STRIPE_OBJECT(
         stripe_id=stripe_id,
         object_type=object_type,
         livemode=livemode,
         api_version=api_version,
-        payload=payload,
-        payload_hash=payload_hash(payload),
+        generic_payload=payload if object_type not in SUPPORTED_OBJECT_TYPES else None,
+        generic_payload_hash=payload_digest if object_type not in SUPPORTED_OBJECT_TYPES else "",
+        charge=(
+            StripeChargeAdapter.validate_python(hydrated_payload)
+            if object_type == "charge"
+            else None
+        ),
+        charge_hash=payload_digest if object_type == "charge" else "",
+        checkout_session=(
+            StripeCheckoutSessionAdapter.validate_python(hydrated_payload)
+            if object_type == "checkout.session"
+            else None
+        ),
+        checkout_session_hash=payload_digest if object_type == "checkout.session" else "",
+        customer=(
+            StripeCustomerAdapter.validate_python(hydrated_payload)
+            if object_type == "customer"
+            else None
+        ),
+        customer_hash=payload_digest if object_type == "customer" else "",
+        invoice=(
+            StripeInvoiceAdapter.validate_python(hydrated_payload)
+            if object_type == "invoice"
+            else None
+        ),
+        invoice_hash=payload_digest if object_type == "invoice" else "",
+        payment_intent=(
+            StripePaymentIntentAdapter.validate_python(hydrated_payload)
+            if object_type == "payment_intent"
+            else None
+        ),
+        payment_intent_hash=payload_digest if object_type == "payment_intent" else "",
+        price=(
+            StripePriceAdapter.validate_python(hydrated_payload)
+            if object_type == "price"
+            else None
+        ),
+        price_hash=payload_digest if object_type == "price" else "",
+        product=(
+            StripeProductAdapter.validate_python(hydrated_payload)
+            if object_type == "product"
+            else None
+        ),
+        product_hash=payload_digest if object_type == "product" else "",
+        subscription=(
+            StripeSubscriptionAdapter.validate_python(hydrated_payload)
+            if object_type == "subscription"
+            else None
+        ),
+        subscription_hash=payload_digest if object_type == "subscription" else "",
         stripe_customer_id=extract_customer_id(payload),
         internal_user_id=extract_internal_user_id(payload),
         sync_status=sync_status,
@@ -353,8 +417,24 @@ async def upsert_stripe_object(
         update_fields=(
             config.BILLING_STRIPE_OBJECT.object_type,
             config.BILLING_STRIPE_OBJECT.api_version,
-            config.BILLING_STRIPE_OBJECT.payload,
-            config.BILLING_STRIPE_OBJECT.payload_hash,
+            config.BILLING_STRIPE_OBJECT.generic_payload,
+            config.BILLING_STRIPE_OBJECT.generic_payload_hash,
+            config.BILLING_STRIPE_OBJECT.charge,
+            config.BILLING_STRIPE_OBJECT.charge_hash,
+            config.BILLING_STRIPE_OBJECT.checkout_session,
+            config.BILLING_STRIPE_OBJECT.checkout_session_hash,
+            config.BILLING_STRIPE_OBJECT.customer,
+            config.BILLING_STRIPE_OBJECT.customer_hash,
+            config.BILLING_STRIPE_OBJECT.invoice,
+            config.BILLING_STRIPE_OBJECT.invoice_hash,
+            config.BILLING_STRIPE_OBJECT.payment_intent,
+            config.BILLING_STRIPE_OBJECT.payment_intent_hash,
+            config.BILLING_STRIPE_OBJECT.price,
+            config.BILLING_STRIPE_OBJECT.price_hash,
+            config.BILLING_STRIPE_OBJECT.product,
+            config.BILLING_STRIPE_OBJECT.product_hash,
+            config.BILLING_STRIPE_OBJECT.subscription,
+            config.BILLING_STRIPE_OBJECT.subscription_hash,
             config.BILLING_STRIPE_OBJECT.stripe_customer_id,
             config.BILLING_STRIPE_OBJECT.internal_user_id,
             config.BILLING_STRIPE_OBJECT.sync_status,
@@ -562,9 +642,76 @@ async def finalize_object_success(
 
         current = current_rows[0]
         current.object_type = reconciled_payload.get("object", current.object_type)
-        current.payload = reconciled_payload
-        current.payload_hash = payload_hash(reconciled_payload)
-        current.api_version = current.api_version
+        current.api_version = stripe_object.api_version
+        payload_digest = payload_hash(reconciled_payload)
+        hydrated_payload = (
+            models.payload_with_api_version(
+                reconciled_payload,
+                api_version=current.api_version,
+            )
+            if current.object_type in SUPPORTED_OBJECT_TYPES
+            else None
+        )
+        current.generic_payload = (
+            reconciled_payload if current.object_type not in SUPPORTED_OBJECT_TYPES else None
+        )
+        current.generic_payload_hash = (
+            payload_digest if current.object_type not in SUPPORTED_OBJECT_TYPES else ""
+        )
+        current.charge = (
+            StripeChargeAdapter.validate_python(hydrated_payload)
+            if current.object_type == "charge"
+            else None
+        )
+        current.charge_hash = payload_digest if current.object_type == "charge" else ""
+        current.checkout_session = (
+            StripeCheckoutSessionAdapter.validate_python(hydrated_payload)
+            if current.object_type == "checkout.session"
+            else None
+        )
+        current.checkout_session_hash = (
+            payload_digest if current.object_type == "checkout.session" else ""
+        )
+        current.customer = (
+            StripeCustomerAdapter.validate_python(hydrated_payload)
+            if current.object_type == "customer"
+            else None
+        )
+        current.customer_hash = payload_digest if current.object_type == "customer" else ""
+        current.invoice = (
+            StripeInvoiceAdapter.validate_python(hydrated_payload)
+            if current.object_type == "invoice"
+            else None
+        )
+        current.invoice_hash = payload_digest if current.object_type == "invoice" else ""
+        current.payment_intent = (
+            StripePaymentIntentAdapter.validate_python(hydrated_payload)
+            if current.object_type == "payment_intent"
+            else None
+        )
+        current.payment_intent_hash = (
+            payload_digest if current.object_type == "payment_intent" else ""
+        )
+        current.price = (
+            StripePriceAdapter.validate_python(hydrated_payload)
+            if current.object_type == "price"
+            else None
+        )
+        current.price_hash = payload_digest if current.object_type == "price" else ""
+        current.product = (
+            StripeProductAdapter.validate_python(hydrated_payload)
+            if current.object_type == "product"
+            else None
+        )
+        current.product_hash = payload_digest if current.object_type == "product" else ""
+        current.subscription = (
+            StripeSubscriptionAdapter.validate_python(hydrated_payload)
+            if current.object_type == "subscription"
+            else None
+        )
+        current.subscription_hash = (
+            payload_digest if current.object_type == "subscription" else ""
+        )
         current.stripe_customer_id = extract_customer_id(reconciled_payload)
         current.internal_user_id = extract_internal_user_id(reconciled_payload)
         current.remote_created_at = to_datetime(reconciled_payload.get("created"))

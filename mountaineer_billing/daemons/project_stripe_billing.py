@@ -129,19 +129,19 @@ async def project_dirty_billing_states(
             }
 
             subscriptions_payload = [
-                stripe_object.payload
+                stripe_object.subscription.model_dump(mode="json")
                 for stripe_object in stripe_objects
-                if stripe_object.object_type == "subscription"
+                if stripe_object.subscription is not None
             ]
             invoices_payload = [
-                stripe_object.payload
+                stripe_object.invoice.model_dump(mode="json")
                 for stripe_object in stripe_objects
-                if stripe_object.object_type == "invoice"
+                if stripe_object.invoice is not None
             ]
             checkout_sessions_payload = [
-                stripe_object.payload
+                stripe_object.checkout_session.model_dump(mode="json")
                 for stripe_object in stripe_objects
-                if stripe_object.object_type == "checkout.session"
+                if stripe_object.checkout_session is not None
             ]
 
             subscription_rows: list[models.Subscription] = []

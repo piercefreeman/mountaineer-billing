@@ -2,6 +2,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+from importlib import import_module
 from pathlib import Path
 
 SCRIPT_PATH = (
@@ -37,12 +38,41 @@ def _write_json(path: Path, payload: dict):
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
-def _make_schema(*, version: str, title: str) -> dict:
+def _make_schema(
+    *,
+    version: str,
+    title: str,
+    extra_schemas: dict[str, dict] | None = None,
+    paths: dict | None = None,
+) -> dict:
+    component_schemas = {
+        schema_name: {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+            },
+            "required": ["id"],
+        }
+        for schema_name in (
+            "event",
+            "charge",
+            "checkout.session",
+            "customer",
+            "invoice",
+            "payment_intent",
+            "price",
+            "product",
+            "subscription",
+        )
+    }
+    if extra_schemas:
+        component_schemas.update(extra_schemas)
+
     return {
         "openapi": "3.0.0",
         "info": {"title": title, "version": version},
-        "paths": {},
-        "components": {"schemas": {}},
+        "paths": paths or {},
+        "components": {"schemas": component_schemas},
     }
 
 
@@ -71,14 +101,107 @@ def _fake_codegen_script(script_path: Path) -> None:
                 "input_path = Path(args[args.index('--input') + 1])",
                 "output_dir = Path(args[args.index('--output') + 1])",
                 "schema = json.loads(input_path.read_text())",
+                "discriminator_field = 'mountaineer_billing_api_version'",
+                "version_literal = schema['components']['schemas']['event']['properties'][discriminator_field]['enum'][0]",
                 "title = schema['info']['title']",
                 "version = schema['info']['version']",
                 "output_dir.mkdir(parents=True, exist_ok=True)",
+                "if version >= '2026-01-01':",
+                "    price_symbol = 'PriceModel'",
+                "else:",
+                "    price_symbol = 'Price'",
+                "if version >= '2025-09-30':",
+                "    subscription_symbol = 'SubscriptionModel'",
+                "else:",
+                "    subscription_symbol = 'Subscription'",
+                "(output_dir / '_internal.py').write_text(",
+                "    '\\n'.join([",
+                "        'from pydantic import BaseModel',",
+                "        'from typing import Literal',",
+                "        '',",
+                "        'class Event(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        'class ChargeModel(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        'class CustomerModel(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        'class InvoiceModel(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        'class PaymentIntent(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        f'class {price_symbol}(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        'class ProductModel(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        f'class {subscription_symbol}(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        'class Session(BaseModel):',",
+                "        '    id: str',",
+                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        '',",
+                "        'Event.model_rebuild()',",
+                "        '',",
+                "    ]) + '\\n'",
+                ")",
+                "(output_dir / 'checkout.py').write_text(",
+                "    '\\n'.join([",
+                "        'from ._internal import Session',",
+                "        '',",
+                "        '__all__ = [\"Session\"]',",
+                "        '',",
+                "    ])",
+                ")",
+                "(output_dir / 'test_helpers.py').write_text(",
+                "    '\\n'.join([",
+                "        'from pydantic import BaseModel, Field',",
+                "        '',",
+                "        'class Helper(BaseModel):',",
+                "        '    id: str = Field(...)',",
+                "        '',",
+                "    ])",
+                ")",
                 "(output_dir / '__init__.py').write_text(",
-                "    f\"# generated for {version} ({title})\\n\"",
-                "    \"from pydantic import BaseModel\\n\\n\"",
-                "    \"class GeneratedModel(BaseModel):\\n\"",
-                "    \"    pass\\n\"",
+                "    '\\n'.join([",
+                "        f'# generated for {version} ({title})',",
+                "        'from ._internal import (',",
+                "        '    ChargeModel,',",
+                "        '    CustomerModel,',",
+                "        '    Event,',",
+                "        '    InvoiceModel,',",
+                "        '    PaymentIntent,',",
+                "        f'    {price_symbol},',",
+                "        '    ProductModel,',",
+                "        f'    {subscription_symbol},',",
+                "        ')',",
+                "        '',",
+                "        '__all__ = [',",
+                "        '    \"ChargeModel\",',",
+                "        '    \"CustomerModel\",',",
+                "        '    \"Event\",',",
+                "        '    \"InvoiceModel\",',",
+                "        '    \"PaymentIntent\",',",
+                "        f'    \"{price_symbol}\",',",
+                "        '    \"ProductModel\",',",
+                "        f'    \"{subscription_symbol}\",',",
+                "        ']',",
+                "        '',",
+                "    ])",
                 ")",
                 "",
             ]
@@ -197,10 +320,203 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
     latest_models = (
         output_dir / "v2026_02_25_clover" / "models" / "__init__.py"
     ).read_text()
+    latest_schema = json.loads(
+        (output_dir / "v2026_02_25_clover" / "schema.json").read_text()
+    )
+    generated_types = (output_dir / "types.py").read_text()
 
     assert "legacy-two" in legacy_models
     assert "latest-ga" in latest_models
+    assert (
+        latest_schema["components"]["schemas"]["event"]["properties"][
+            stripe_codegen.VERSION_DISCRIMINATOR_FIELD
+        ]["enum"]
+        == ["2026-02-25.clover"]
+    )
+    assert "TypeAdapter" in generated_types
+    assert (
+        f'Field(discriminator="{stripe_codegen.VERSION_DISCRIMINATOR_FIELD}")'
+        in generated_types
+    )
+    assert "parse_object_payload" not in generated_types
+    assert "parse_event_payload" not in generated_types
+    assert "_OBJECT_MODEL_TYPES" not in generated_types
     assert (output_dir / "__init__.py").exists()
     assert (output_dir / "v2026_02_25_clover" / "__init__.py").read_text().startswith(
         "from . import models"
     )
+    assert (
+        "ConfigDict(defer_build=True)"
+        in (output_dir / "v2026_02_25_clover" / "models" / "_deferred.py").read_text()
+    )
+    assert "model_rebuild()" not in (
+        output_dir / "v2026_02_25_clover" / "models" / "_internal.py"
+    ).read_text()
+    assert "from ._deferred import BaseModel" in (
+        output_dir / "v2026_02_25_clover" / "models" / "_internal.py"
+    ).read_text()
+    assert "from ._deferred import BaseModel, Field" in (
+        output_dir / "v2026_02_25_clover" / "models" / "test_helpers.py"
+    ).read_text()
+
+
+def test_generate_stripe_package_prunes_unreachable_components(tmp_path: Path):
+    repo_dir = tmp_path / "stripe-openapi"
+    repo_dir.mkdir()
+    _init_repo(repo_dir)
+
+    schema = _make_schema(
+        version="2026-02-25.clover",
+        title="latest-ga",
+        extra_schemas={
+            "customer_settings": {
+                "type": "object",
+                "properties": {
+                    "default_source": {"$ref": "#/components/schemas/source"},
+                },
+            },
+            "source": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
+            },
+            "unused_model": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
+            },
+            "path_only_model": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
+            },
+        },
+        paths={
+            "/unused": {
+                "get": {
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "$ref": "#/components/schemas/path_only_model"
+                                    }
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        },
+    )
+    schema["components"]["schemas"]["customer"]["properties"]["settings"] = {
+        "$ref": "#/components/schemas/customer_settings"
+    }
+
+    _write_json(repo_dir / "latest" / "openapi.spec3.json", schema)
+    _commit_all(repo_dir, "latest")
+
+    output_dir = tmp_path / "generated"
+    codegen_script = tmp_path / "fake_codegen.py"
+    _fake_codegen_script(codegen_script)
+
+    stripe_codegen.generate_stripe_package(
+        repo_dir=repo_dir,
+        output_dir=output_dir,
+        codegen_command=str(codegen_script),
+        fetch_repo=False,
+    )
+
+    pruned_schema = json.loads(
+        (output_dir / "v2026_02_25_clover" / "schema.json").read_text()
+    )
+    pruned_components = pruned_schema["components"]["schemas"]
+
+    assert "customer_settings" in pruned_components
+    assert "source" in pruned_components
+    assert "unused_model" not in pruned_components
+    assert "path_only_model" not in pruned_components
+    assert pruned_schema["paths"] == {}
+
+
+def test_generated_types_module_resolves_version_specific_models(tmp_path: Path):
+    repo_dir = tmp_path / "stripe-openapi"
+    repo_dir.mkdir()
+    _init_repo(repo_dir)
+
+    _write_json(
+        repo_dir / "openapi" / "spec3.json",
+        _make_schema(version="2024-04-10", title="ga-older"),
+    )
+    _commit_all(repo_dir, "older")
+
+    _write_json(
+        repo_dir / "latest" / "openapi.spec3.json",
+        _make_schema(version="2026-02-25.clover", title="ga-latest"),
+    )
+    _commit_all(repo_dir, "latest")
+
+    output_dir = tmp_path / "generated"
+    codegen_script = tmp_path / "fake_codegen.py"
+    _fake_codegen_script(codegen_script)
+
+    stripe_codegen.generate_stripe_package(
+        repo_dir=repo_dir,
+        output_dir=output_dir,
+        codegen_command=str(codegen_script),
+        fetch_repo=False,
+    )
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        generated_types = import_module("generated.types")
+        version_field = stripe_codegen.VERSION_DISCRIMINATOR_FIELD
+
+        older_subscription = generated_types.StripeSubscriptionAdapter.validate_python(
+            {
+                "id": "sub_old",
+                version_field: "2024-04-10",
+            }
+        )
+        newer_subscription = generated_types.StripeSubscriptionAdapter.validate_python(
+            {
+                "id": "sub_new",
+                version_field: "2026-02-25.clover",
+            }
+        )
+        older_price = generated_types.StripePriceAdapter.validate_python(
+            {
+                "id": "price_old",
+                version_field: "2024-04-10",
+            }
+        )
+        newer_price = generated_types.StripePriceAdapter.validate_python(
+            {
+                "id": "price_new",
+                version_field: "2026-02-25.clover",
+            }
+        )
+        checkout_session = generated_types.StripeCheckoutSessionAdapter.validate_python(
+            {
+                "id": "cs_test",
+                version_field: "2026-02-25.clover",
+            }
+        )
+        event_payload = generated_types.StripeEventAdapter.validate_python(
+            {
+                "id": "evt_test",
+                version_field: "2026-02-25.clover",
+            }
+        )
+
+        assert older_subscription.__class__.__name__ == "Subscription"
+        assert newer_subscription.__class__.__name__ == "SubscriptionModel"
+        assert older_price.__class__.__name__ == "Price"
+        assert newer_price.__class__.__name__ == "PriceModel"
+        assert checkout_session.__class__.__name__ == "Session"
+        assert event_payload.__class__.__name__ == "Event"
+        assert not hasattr(generated_types, "parse_object_payload")
+        assert not hasattr(generated_types, "parse_event_payload")
+    finally:
+        sys.path.remove(str(tmp_path))
