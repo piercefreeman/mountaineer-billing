@@ -56,7 +56,9 @@ def test_checkout_session_round_trip_is_fast() -> None:
 
     assert model.id == payload["id"]
     assert serialized["id"] == payload["id"]
-    assert serialized["customer_details"]["email"] == payload["customer_details"]["email"]
+    assert (
+        serialized["customer_details"]["email"] == payload["customer_details"]["email"]
+    )
     assert serialized[VERSION_DISCRIMINATOR_FIELD] == api_version
     assert cold_elapsed < COLD_ROUND_TRIP_MAX_SECONDS, (
         f"cold round trip took {cold_elapsed:.3f}s, "

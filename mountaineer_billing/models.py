@@ -35,7 +35,7 @@ app-facing billing tables.
 """
 
 from datetime import date, datetime, timezone
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, Generic, TypeVar
 from uuid import UUID, uuid4
 
 from iceaxe import (
@@ -89,6 +89,7 @@ def payload_with_api_version(
 # Mixins
 #
 
+
 class BillingIdentityMixin(TableBase, autodetect=False):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
 
@@ -105,6 +106,7 @@ class TimestampedMixin(CreatedAtMixin, autodetect=False):
 # Identity And Catalog
 #
 
+
 class UserBillingMixin(BillingIdentityMixin, autodetect=False):
     """Local user fields needed for Stripe identity and checkout bootstrapping."""
 
@@ -116,7 +118,9 @@ class UserBillingMixin(BillingIdentityMixin, autodetect=False):
     stripe_customer_id: str | None = Field(default=None, unique=True)
 
 
-class ProductPrice(BillingIdentityMixin, Generic[ProductIDType, PriceIDType], autodetect=False):
+class ProductPrice(
+    BillingIdentityMixin, Generic[ProductIDType, PriceIDType], autodetect=False
+):
     """
     Local catalog mapping from stable app ids to live Stripe price ids.
     """
@@ -131,6 +135,7 @@ class ProductPrice(BillingIdentityMixin, Generic[ProductIDType, PriceIDType], au
 #
 # Raw Stripe Mirror And Workflow State
 #
+
 
 class StripeEvent(CreatedAtMixin, autodetect=False):
     """Immutable audit log of validated Stripe webhook events."""
@@ -156,12 +161,9 @@ class StripeEvent(CreatedAtMixin, autodetect=False):
     def typed_payload(self) -> "StripeEventPayload":
         from .stripe.types import StripeEventAdapter
 
-        return cast(
-            "StripeEventPayload",
-            StripeEventAdapter.validate_python(
-                self.payload,
-                api_version=self.payload.get("api_version"),
-            ),
+        return StripeEventAdapter.validate_python(
+            self.payload,
+            api_version=self.payload.get("api_version"),
         )
 
 
@@ -286,6 +288,7 @@ class BillingProjectionState(TimestampedMixin, autodetect=False):
 # Derived Billing Projections
 #
 
+
 class CheckoutSession(BillingIdentityMixin, autodetect=False):
     """
     Derived checkout-session projection used by the application.
@@ -376,6 +379,7 @@ class Payment(TimestampedMixin, autodetect=False):
 #
 # Local-Only Usage
 #
+
 
 class MeteredUsage(TimestampedMixin, Generic[MeteredIDBaseType], autodetect=False):
     """Local ledger of consumed usage for metered entitlements."""

@@ -78,10 +78,8 @@ async def project_dirty_billing_states(
                 )
                 .where(
                     or_(
-                        config.BILLING_STRIPE_OBJECT.sync_status
-                        == SyncStatus.PENDING,
-                        config.BILLING_STRIPE_OBJECT.sync_status
-                        == SyncStatus.SYNCING,
+                        config.BILLING_STRIPE_OBJECT.sync_status == SyncStatus.PENDING,
+                        config.BILLING_STRIPE_OBJECT.sync_status == SyncStatus.SYNCING,
                     )
                 )
                 .limit(1)
@@ -201,7 +199,9 @@ async def project_dirty_billing_states(
                     quantity = item.get("quantity")
                     resource_rows.append(
                         config.BILLING_RESOURCE_ACCESS(
-                            started_datetime=to_datetime(item.get("current_period_start"))
+                            started_datetime=to_datetime(
+                                item.get("current_period_start")
+                            )
                             or subscription_period_start(payload),
                             ended_datetime=ended_at,
                             stripe_subscription_id=stripe_subscription_id,

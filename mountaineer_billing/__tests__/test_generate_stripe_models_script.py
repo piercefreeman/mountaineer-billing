@@ -335,10 +335,16 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
         stripe_codegen.VERSION_DISCRIMINATOR_FIELD
         not in latest_schema["components"]["schemas"]["event"]["properties"]
     )
-    assert "from ._type_helpers import LazyAdapter, make_lazy_payload_type" in generated_types
+    assert (
+        "from ._type_helpers import LazyAdapter, make_lazy_payload_type"
+        in generated_types
+    )
     assert "LazyStripeAdapter = LazyAdapter" in generated_types
     assert "TypeAdapter" not in generated_types
-    assert f'VERSION_DISCRIMINATOR_FIELD = "{stripe_codegen.VERSION_DISCRIMINATOR_FIELD}"' in generated_types
+    assert (
+        f'VERSION_DISCRIMINATOR_FIELD = "{stripe_codegen.VERSION_DISCRIMINATOR_FIELD}"'
+        in generated_types
+    )
     assert "if TYPE_CHECKING:" in generated_types
     assert "_MODEL_REGISTRY" in generated_types
     assert "class LazyStripeAdapter" not in generated_types
@@ -347,16 +353,21 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
     assert "_OBJECT_MODEL_TYPES" not in generated_types
     assert (output_dir / "_type_helpers.py").exists()
     assert (output_dir / "__init__.py").exists()
-    assert (output_dir / "v2026_02_25_clover" / "__init__.py").read_text().startswith(
-        "from . import models"
+    assert (
+        (output_dir / "v2026_02_25_clover" / "__init__.py")
+        .read_text()
+        .startswith("from . import models")
     )
     assert (
         "ConfigDict(defer_build=True)"
         in (output_dir / "v2026_02_25_clover" / "models" / "_deferred.py").read_text()
     )
-    assert "model_rebuild()" not in (
-        output_dir / "v2026_02_25_clover" / "models" / "_internal.py"
-    ).read_text()
+    assert (
+        "model_rebuild()"
+        not in (
+            output_dir / "v2026_02_25_clover" / "models" / "_internal.py"
+        ).read_text()
+    )
     latest_internal = (
         output_dir / "v2026_02_25_clover" / "models" / "_internal.py"
     ).read_text()
@@ -364,12 +375,16 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
     assert "MountaineerBillingApiVersion" not in latest_internal
     assert stripe_codegen.VERSION_DISCRIMINATOR_FIELD not in latest_internal
     assert stripe_codegen.VERSION_DISCRIMINATOR_FIELD in latest_models
-    assert stripe_codegen.VERSION_DISCRIMINATOR_FIELD in (
-        output_dir / "v2026_02_25_clover" / "models" / "checkout.py"
-    ).read_text()
-    assert "from ._deferred import BaseModel, Field" in (
-        output_dir / "v2026_02_25_clover" / "models" / "test_helpers.py"
-    ).read_text()
+    assert (
+        stripe_codegen.VERSION_DISCRIMINATOR_FIELD
+        in (output_dir / "v2026_02_25_clover" / "models" / "checkout.py").read_text()
+    )
+    assert (
+        "from ._deferred import BaseModel, Field"
+        in (
+            output_dir / "v2026_02_25_clover" / "models" / "test_helpers.py"
+        ).read_text()
+    )
 
 
 def test_generate_stripe_package_prunes_unreachable_components(tmp_path: Path):
@@ -601,7 +616,9 @@ def test_generated_types_module_resolves_version_specific_models(tmp_path: Path)
                 "2026-02-25.clover"
             )
         )
-        directly_validated = newer_subscription_type.model_validate({"id": "sub_direct"})
+        directly_validated = newer_subscription_type.model_validate(
+            {"id": "sub_direct"}
+        )
 
         class Wrapper(BaseModel):
             subscription: generated_types.StripeSubscriptionPayload

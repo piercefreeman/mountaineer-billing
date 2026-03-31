@@ -24,8 +24,7 @@ def _load_registry() -> dict[str, StripeVersionMetadata]:
 
     raw_entries = json.loads(registry_path.read_text())
     return {
-        entry["api_version"]: StripeVersionMetadata(**entry)
-        for entry in raw_entries
+        entry["api_version"]: StripeVersionMetadata(**entry) for entry in raw_entries
     }
 
 
