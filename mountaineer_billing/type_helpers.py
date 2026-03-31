@@ -5,7 +5,7 @@ from importlib import import_module
 from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from pydantic import BaseModel
-from pydantic_core import core_schema
+from pydantic_core import core_schema as pydantic_core_schema
 
 ValidatedModel = TypeVar("ValidatedModel")
 ModelImportTarget = tuple[str, str]
@@ -72,12 +72,12 @@ class LazyAdapter(Generic[ValidatedModel]):
         model_type = self._load_model(discriminator_value)
         return cast(ValidatedModel, model_type.model_validate(value))
 
-    def core_schema(self) -> core_schema.CoreSchema:
-        return core_schema.no_info_plain_validator_function(
+    def core_schema(self) -> pydantic_core_schema.CoreSchema:
+        return pydantic_core_schema.no_info_plain_validator_function(
             self.validate_python,
-            serialization=core_schema.plain_serializer_function_ser_schema(
+            serialization=pydantic_core_schema.plain_serializer_function_ser_schema(
                 self.serialize_python,
-                return_schema=core_schema.any_schema(),
+                return_schema=pydantic_core_schema.any_schema(),
                 when_used="always",
             ),
         )
@@ -87,10 +87,7 @@ class LazyAdapter(Generic[ValidatedModel]):
             return value
 
         serialized = _serialize_validated_model(value)
-        if (
-            isinstance(serialized, Mapping)
-            and self._discriminator_field in serialized
-        ):
+        if isinstance(serialized, Mapping) and self._discriminator_field in serialized:
             return serialized
 
         discriminator_value = self._discriminator_for_model_instance(value)
@@ -134,7 +131,9 @@ class LazyAdapter(Generic[ValidatedModel]):
         return module_path
 
     def _is_registered_model_instance(self, value: BaseModel) -> bool:
-        if any(isinstance(value, model_type) for model_type in self._model_cache.values()):
+        if any(
+            isinstance(value, model_type) for model_type in self._model_cache.values()
+        ):
             return True
 
         return self._discriminator_for_model_instance(value) is not None
@@ -166,13 +165,13 @@ class LazyPayloadBase:
         cls,
         source_type: Any,
         handler: Any,
-    ) -> core_schema.CoreSchema:
+    ) -> pydantic_core_schema.CoreSchema:
         return cls.adapter.core_schema()
 
     @classmethod
     def __get_pydantic_json_schema__(
         cls,
-        core_schema_value: core_schema.CoreSchema,
+        core_schema_value: pydantic_core_schema.CoreSchema,
         handler: Any,
     ) -> dict[str, Any]:
         return {

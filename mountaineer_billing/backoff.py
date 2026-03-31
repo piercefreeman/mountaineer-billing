@@ -21,7 +21,7 @@ def backoff_fn(
     def decorator(func):
         if iscoroutinefunction(func):
 
-            async def wrapper(*args, **kwargs):  # type: ignore
+            async def wrapper(*args, **kwargs):
                 attempts = 0
                 sleep_time = start_sleep_time
                 while attempts < max_tries:

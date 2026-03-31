@@ -41,4 +41,4 @@ async def metered_atomic_increase(
         datetime.now(timezone.utc),
     )
 
-    return updated_metered_usage[0]["metered_usage"]  # type: ignore
+    return int(updated_metered_usage[0]["metered_usage"])

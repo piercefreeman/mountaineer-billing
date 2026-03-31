@@ -116,9 +116,7 @@ TYPE_ADAPTER_NAMES = {
     "subscription": "StripeSubscriptionAdapter",
 }
 DEFERRED_PYDANTIC_IMPORTS = {"BaseModel", "Field", "RootModel"}
-MODEL_REBUILD_PATTERN = re.compile(
-    r"(?m)^[A-Za-z_][A-Za-z0-9_]*\.model_rebuild\(\)\n?"
-)
+MODEL_REBUILD_PATTERN = re.compile(r"(?m)^[A-Za-z_][A-Za-z0-9_]*\.model_rebuild\(\)\n?")
 PYDANTIC_IMPORT_PATTERN = re.compile(r"(?m)^from pydantic import (?P<imports>.+)$")
 TYPING_IMPORT_PATTERN = re.compile(r"(?m)^from typing import (?P<imports>.+)$")
 DEFERRED_MODELS_MODULE = """from __future__ import annotations
@@ -321,16 +319,18 @@ def collect_schema_revisions(
         TimeElapsedColumn(),
         console=CONSOLE,
     ) as progress:
-        scan_task = progress.add_task(
-            "Scanning schema commits", total=len(raw_commits)
-        )
+        scan_task = progress.add_task("Scanning schema commits", total=len(raw_commits))
 
         for commit_index, commit_sha in enumerate(raw_commits):
-            for schema_path in sorted(schema_paths, key=lambda path: PATH_PRIORITY[path]):
+            for schema_path in sorted(
+                schema_paths, key=lambda path: PATH_PRIORITY[path]
+            ):
                 if commit_sha not in commits_by_path[schema_path]:
                     continue
 
-                raw_schema = _git_output(repo_dir, "show", f"{commit_sha}:{schema_path}")
+                raw_schema = _git_output(
+                    repo_dir, "show", f"{commit_sha}:{schema_path}"
+                )
                 schema = json.loads(raw_schema)
                 api_version = schema["info"]["version"]
                 ranked_revision = _RankedRevision(
@@ -413,13 +413,13 @@ def _render_package_root_init() -> str:
             "",
             "@lru_cache(maxsize=1)",
             "def _load_registry() -> dict[str, StripeVersionMetadata]:",
-            "    registry_path = Path(__file__).with_name(\"versions.json\")",
+            '    registry_path = Path(__file__).with_name("versions.json")',
             "    if not registry_path.exists():",
             "        return {}",
             "",
             "    raw_entries = json.loads(registry_path.read_text())",
             "    return {",
-            "        entry[\"api_version\"]: StripeVersionMetadata(**entry)",
+            '        entry["api_version"]: StripeVersionMetadata(**entry)',
             "        for entry in raw_entries",
             "    }",
             "",
@@ -433,13 +433,13 @@ def _render_package_root_init() -> str:
             "        return _load_registry()[api_version]",
             "    except KeyError as exc:",
             "        raise KeyError(",
-            "            f\"Stripe API version {api_version!r} has not been generated\"",
+            '            f"Stripe API version {api_version!r} has not been generated"',
             "        ) from exc",
             "",
             "",
             "def import_models(api_version: str) -> ModuleType:",
             "    metadata = get_version_metadata(api_version)",
-            "    return import_module(f\"{__name__}.{metadata.package_name}.models\")",
+            '    return import_module(f"{__name__}.{metadata.package_name}.models")',
             "",
             "",
             "def refresh_registry() -> None:",
@@ -447,11 +447,11 @@ def _render_package_root_init() -> str:
             "",
             "",
             "__all__ = [",
-            "    \"StripeVersionMetadata\",",
-            "    \"available_versions\",",
-            "    \"get_version_metadata\",",
-            "    \"import_models\",",
-            "    \"refresh_registry\",",
+            '    "StripeVersionMetadata",',
+            '    "available_versions",',
+            '    "get_version_metadata",',
+            '    "import_models",',
+            '    "refresh_registry",',
             "]",
             "",
         ]
@@ -562,10 +562,9 @@ def _resolve_type_import(
 
 def _can_import_global_type_helpers(output_dir: Path) -> bool:
     package_root = output_dir.parent
-    return (
-        (package_root / "__init__.py").exists()
-        and (package_root / "type_helpers.py").exists()
-    )
+    return (package_root / "__init__.py").exists() and (
+        package_root / "type_helpers.py"
+    ).exists()
 
 
 def _render_type_helpers_import(output_dir: Path) -> str:
@@ -658,9 +657,8 @@ def _render_types_module(
         lines.extend(
             [
                 f"    {alias_name}: TypeAlias = (",
-                "        " + " | ".join(
-                    type_import.alias_name for type_import in type_imports
-                ),
+                "        "
+                + " | ".join(type_import.alias_name for type_import in type_imports),
                 "    )",
                 "",
             ]
@@ -669,7 +667,8 @@ def _render_types_module(
     lines.extend(
         [
             "    StripeObjectPayload: TypeAlias = (",
-            "        " + " | ".join(
+            "        "
+            + " | ".join(
                 TYPE_ALIAS_NAMES[object_type]
                 for object_type in SUPPORTED_STRIPE_OBJECT_TYPES
             ),
@@ -697,7 +696,7 @@ def _render_types_module(
         adapter_name = TYPE_ADAPTER_NAMES[object_type]
         lines.extend(
             [
-                f"{adapter_name}: LazyAdapter[{alias_name}] = _ADAPTERS[\"{object_type}\"]",
+                f'{adapter_name}: LazyAdapter[{alias_name}] = _ADAPTERS["{object_type}"]',
                 "",
             ]
         )
@@ -719,12 +718,18 @@ def _render_types_module(
 
     all_names = [
         TYPE_ALIAS_NAMES["event"],
-        *[TYPE_ALIAS_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
+        *[
+            TYPE_ALIAS_NAMES[object_type]
+            for object_type in SUPPORTED_STRIPE_OBJECT_TYPES
+        ],
         "StripeObjectPayload",
         "LazyAdapter",
         "LazyStripeAdapter",
         TYPE_ADAPTER_NAMES["event"],
-        *[TYPE_ADAPTER_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
+        *[
+            TYPE_ADAPTER_NAMES[object_type]
+            for object_type in SUPPORTED_STRIPE_OBJECT_TYPES
+        ],
     ]
     lines.extend(
         [
@@ -764,13 +769,18 @@ def _prepare_output_dir(
             continue
         if not child.name.startswith("v"):
             continue
-        if selected_package_names is not None and child.name not in selected_package_names:
+        if (
+            selected_package_names is not None
+            and child.name not in selected_package_names
+        ):
             continue
         shutil.rmtree(child)
 
 
 def _load_schema(repo_dir: Path, revision: StripeSchemaRevision) -> dict[str, Any]:
-    raw_schema = _git_output(repo_dir, "show", f"{revision.commit_sha}:{revision.schema_path}")
+    raw_schema = _git_output(
+        repo_dir, "show", f"{revision.commit_sha}:{revision.schema_path}"
+    )
     schema = json.loads(raw_schema)
     return _prune_schema_for_codegen(schema)
 
@@ -867,7 +877,9 @@ def _ensure_typing_import(source: str, import_name: str) -> str:
             imported_names.append(import_name)
         return f"from typing import {', '.join(imported_names)}"
 
-    rewritten_source, count = TYPING_IMPORT_PATTERN.subn(replace_import, source, count=1)
+    rewritten_source, count = TYPING_IMPORT_PATTERN.subn(
+        replace_import, source, count=1
+    )
     if count:
         return rewritten_source
 
@@ -1038,7 +1050,9 @@ def generate_stripe_package(
 
     repo_dir = ensure_repo(repo_dir, repo_url=repo_url, fetch=fetch_repo)
     all_revisions = collect_schema_revisions(repo_dir, include_preview=include_preview)
-    all_revisions = filter_revisions_by_min_year(all_revisions, min_api_year=min_api_year)
+    all_revisions = filter_revisions_by_min_year(
+        all_revisions, min_api_year=min_api_year
+    )
 
     revisions = all_revisions
     if selected_versions:
@@ -1051,11 +1065,11 @@ def generate_stripe_package(
     if not revisions:
         raise RuntimeError("No Stripe schemas found for generation")
 
-    CONSOLE.log(f"[green]Found {len(revisions)} Stripe API version(s) to generate[/green]")
+    CONSOLE.log(
+        f"[green]Found {len(revisions)} Stripe API version(s) to generate[/green]"
+    )
     selected_package_names = (
-        {revision.package_name for revision in revisions}
-        if selected_versions
-        else None
+        {revision.package_name for revision in revisions} if selected_versions else None
     )
     _prepare_output_dir(
         output_dir,
@@ -1115,7 +1129,9 @@ def generate_stripe_package(
     (output_dir / "types.py").write_text(
         _render_types_module(output_dir=output_dir, revisions=renderable_revisions)
     )
-    CONSOLE.log(f"[green]Wrote Stripe model registry to[/green] [bold]{output_dir}[/bold]")
+    CONSOLE.log(
+        f"[green]Wrote Stripe model registry to[/green] [bold]{output_dir}[/bold]"
+    )
     return revisions
 
 

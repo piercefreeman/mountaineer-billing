@@ -30,9 +30,9 @@ def load_fixture(path: str) -> dict:
 
 @pytest.fixture
 def mock_checkout_session_retrieve_and_lines(config: AppConfig):
-    session_payload = load_fixture("stripe_flows/one_time/4_checkout.session.completed.json")[
-        "data"
-    ]["object"]
+    session_payload = load_fixture(
+        "stripe_flows/one_time/4_checkout.session.completed.json"
+    )["data"]["object"]
     line_items_payload = load_fixture(
         "stripe_flows/one_time/4_checkout.session.completed.extra.line_items.json"
     )["data"]
@@ -75,7 +75,9 @@ async def test_subscription_event_reconciles_and_projects(
         ]
     )
 
-    event_payload = load_fixture("stripe_flows/subscription/6_customer.subscription.created.json")
+    event_payload = load_fixture(
+        "stripe_flows/subscription/6_customer.subscription.created.json"
+    )
     subscription_payload = event_payload["data"]["object"]
 
     with patch("stripe.Subscription.retrieve") as mock_retrieve:
@@ -127,7 +129,9 @@ async def test_subscription_event_reconciles_and_projects(
         stripe_object.object_type: stripe_object for stripe_object in stripe_objects
     }
     assert "subscription" in stripe_objects_by_type
-    assert stripe_objects_by_type["subscription"].stripe_id == subscription_payload["id"]
+    assert (
+        stripe_objects_by_type["subscription"].stripe_id == subscription_payload["id"]
+    )
     assert stripe_objects_by_type["subscription"].sync_status == SyncStatus.CLEAN
 
     projection_states = await db_connection.exec(select(models.BillingProjectionState))
@@ -137,12 +141,16 @@ async def test_subscription_event_reconciles_and_projects(
     subscriptions = await db_connection.exec(select(models.Subscription))
     assert len(subscriptions) == 1
     assert subscriptions[0].stripe_subscription_id == subscription_payload["id"]
-    assert subscriptions[0].stripe_status == StripeStatus(subscription_payload["status"])
+    assert subscriptions[0].stripe_status == StripeStatus(
+        subscription_payload["status"]
+    )
 
     resources = await db_connection.exec(select(models.ResourceAccess))
     assert len(resources) == 1
     assert resources[0].product_id == ProductID.SUBSCRIPTION_GOLD
-    assert resources[0].stripe_subscription_id == subscriptions[0].stripe_subscription_id
+    assert (
+        resources[0].stripe_subscription_id == subscriptions[0].stripe_subscription_id
+    )
     assert not resources[0].is_perpetual
 
 
@@ -170,7 +178,9 @@ async def test_checkout_session_projects_one_time_payment_and_access(
         ]
     )
 
-    event_payload = load_fixture("stripe_flows/one_time/4_checkout.session.completed.json")
+    event_payload = load_fixture(
+        "stripe_flows/one_time/4_checkout.session.completed.json"
+    )
 
     async with provide_dependencies(
         store_stripe_event,
@@ -247,7 +257,9 @@ async def test_duplicate_event_is_idempotent(
         ]
     )
 
-    event_payload = load_fixture("stripe_flows/one_time/4_checkout.session.completed.json")
+    event_payload = load_fixture(
+        "stripe_flows/one_time/4_checkout.session.completed.json"
+    )
 
     for _ in range(2):
         async with provide_dependencies(

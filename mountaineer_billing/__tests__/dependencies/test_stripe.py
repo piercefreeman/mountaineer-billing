@@ -75,9 +75,7 @@ async def test_checkout_builder(
         mocked_session.assert_called_once()
         session_kwargs = mocked_session.call_args.kwargs
         assert session_kwargs["client_reference_id"] == str(user.id)
-        assert session_kwargs["metadata"] == {
-            INTERNAL_USER_ID_KEY: str(user.id)
-        }
+        assert session_kwargs["metadata"] == {INTERNAL_USER_ID_KEY: str(user.id)}
         assert session_kwargs["payment_intent_data"] == {
             "metadata": {INTERNAL_USER_ID_KEY: str(user.id)}
         }

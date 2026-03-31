@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal, cast
 
 import stripe
 from fastapi import Depends
@@ -148,8 +148,8 @@ def checkout_builder(
             product, price = ids_to_products[(product_id, price_id)]
 
             product_query = select(product_price_model).where(
-                product_price_model.product_id == product.id,  # type: ignore
-                product_price_model.price_id == price.id,  # type: ignore
+                product_price_model.product_id == product.id,
+                product_price_model.price_id == price.id,
             )
             product_prices = await db_connection.exec(product_query)
             product_price = product_prices[0] if product_prices else None
@@ -200,7 +200,7 @@ def checkout_builder(
         else:
             checkout_kwargs["subscription_data"] = {"metadata": metadata}
 
-        checkout_session = stripe.checkout.Session.create(
+        checkout_session = cast(Any, stripe.checkout.Session).create(
             **checkout_kwargs,
         )
         return checkout_session.url

@@ -43,9 +43,7 @@ class ReconcileStripeObjects(Workflow):
         limit: int = 25,
     ) -> ReconcileStripeObjectsResponse:
         return await self.run_action(
-            reconcile_dirty_stripe_objects(
-                ReconcileStripeObjectsRequest(limit=limit)
-            ),
+            reconcile_dirty_stripe_objects(ReconcileStripeObjectsRequest(limit=limit)),
             retry=RetryPolicy(attempts=3, backoff_seconds=5),
             timeout=timedelta(seconds=60),
         )

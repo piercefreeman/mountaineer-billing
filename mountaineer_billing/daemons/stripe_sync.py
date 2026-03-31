@@ -4,7 +4,7 @@ import json
 import warnings
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
@@ -340,7 +340,9 @@ async def upsert_stripe_object(
         livemode=livemode,
         api_version=api_version,
         generic_payload=payload if object_type not in SUPPORTED_OBJECT_TYPES else None,
-        generic_payload_hash=payload_digest if object_type not in SUPPORTED_OBJECT_TYPES else "",
+        generic_payload_hash=payload_digest
+        if object_type not in SUPPORTED_OBJECT_TYPES
+        else "",
         charge=(
             StripeChargeAdapter.validate_python(payload, api_version=api_version)
             if object_type == "charge"
@@ -348,11 +350,15 @@ async def upsert_stripe_object(
         ),
         charge_hash=payload_digest if object_type == "charge" else "",
         checkout_session=(
-            StripeCheckoutSessionAdapter.validate_python(payload, api_version=api_version)
+            StripeCheckoutSessionAdapter.validate_python(
+                payload, api_version=api_version
+            )
             if object_type == "checkout.session"
             else None
         ),
-        checkout_session_hash=payload_digest if object_type == "checkout.session" else "",
+        checkout_session_hash=payload_digest
+        if object_type == "checkout.session"
+        else "",
         customer=(
             StripeCustomerAdapter.validate_python(payload, api_version=api_version)
             if object_type == "customer"
@@ -455,6 +461,8 @@ async def claim_reconcile_batch(
 ) -> list[models.StripeObject]:
     now = utcnow()
     stale_lock = now - timedelta(minutes=5)
+    next_reconcile_at = cast(Any, config.BILLING_STRIPE_OBJECT.next_reconcile_at)
+    locked_at = cast(Any, config.BILLING_STRIPE_OBJECT.locked_at)
 
     async with db_connection.transaction():
         query = (
@@ -467,14 +475,14 @@ async def claim_reconcile_batch(
             )
             .where(
                 or_(
-                    config.BILLING_STRIPE_OBJECT.next_reconcile_at == None,  # noqa: E711
-                    config.BILLING_STRIPE_OBJECT.next_reconcile_at <= now,
+                    next_reconcile_at == None,  # noqa: E711
+                    next_reconcile_at <= now,
                 )
             )
             .where(
                 or_(
-                    config.BILLING_STRIPE_OBJECT.locked_at == None,  # noqa: E711
-                    config.BILLING_STRIPE_OBJECT.locked_at < stale_lock,
+                    locked_at == None,  # noqa: E711
+                    locked_at < stale_lock,
                 )
             )
             .order_by(config.BILLING_STRIPE_OBJECT.dirty_since, "ASC")
@@ -498,6 +506,8 @@ async def claim_projection_batch(
 ) -> list[models.BillingProjectionState]:
     now = utcnow()
     stale_lock = now - timedelta(minutes=5)
+    next_project_at = cast(Any, config.BILLING_PROJECTION_STATE.next_project_at)
+    locked_at = cast(Any, config.BILLING_PROJECTION_STATE.locked_at)
 
     async with db_connection.transaction():
         query = (
@@ -512,14 +522,14 @@ async def claim_projection_batch(
             )
             .where(
                 or_(
-                    config.BILLING_PROJECTION_STATE.next_project_at == None,  # noqa: E711
-                    config.BILLING_PROJECTION_STATE.next_project_at <= now,
+                    next_project_at == None,  # noqa: E711
+                    next_project_at <= now,
                 )
             )
             .where(
                 or_(
-                    config.BILLING_PROJECTION_STATE.locked_at == None,  # noqa: E711
-                    config.BILLING_PROJECTION_STATE.locked_at < stale_lock,
+                    locked_at == None,  # noqa: E711
+                    locked_at < stale_lock,
                 )
             )
             .order_by(config.BILLING_PROJECTION_STATE.dirty_since, "ASC")
@@ -560,13 +570,14 @@ async def fetch_canonical_object(
             )
         )
     if object_type == "checkout.session":
-        checkout_session = stripe.checkout.Session.retrieve(
+        checkout_session_api = cast(Any, stripe.checkout.Session)
+        checkout_session = checkout_session_api.retrieve(
             stripe_id,
             api_key=api_key,
             expand=["customer", "subscription", "payment_intent", "invoice"],
         )
         payload = stripe_object_to_dict(checkout_session)
-        line_items = stripe.checkout.Session.list_line_items(
+        line_items = checkout_session_api.list_line_items(
             stripe_id,
             api_key=api_key,
             expand=["data.price.product"],
@@ -640,7 +651,9 @@ async def finalize_object_success(
         current.api_version = stripe_object.api_version
         payload_digest = payload_hash(reconciled_payload)
         current.generic_payload = (
-            reconciled_payload if current.object_type not in SUPPORTED_OBJECT_TYPES else None
+            reconciled_payload
+            if current.object_type not in SUPPORTED_OBJECT_TYPES
+            else None
         )
         current.generic_payload_hash = (
             payload_digest if current.object_type not in SUPPORTED_OBJECT_TYPES else ""
@@ -673,7 +686,9 @@ async def finalize_object_success(
             if current.object_type == "customer"
             else None
         )
-        current.customer_hash = payload_digest if current.object_type == "customer" else ""
+        current.customer_hash = (
+            payload_digest if current.object_type == "customer" else ""
+        )
         current.invoice = (
             StripeInvoiceAdapter.validate_python(
                 reconciled_payload,
@@ -682,7 +697,9 @@ async def finalize_object_success(
             if current.object_type == "invoice"
             else None
         )
-        current.invoice_hash = payload_digest if current.object_type == "invoice" else ""
+        current.invoice_hash = (
+            payload_digest if current.object_type == "invoice" else ""
+        )
         current.payment_intent = (
             StripePaymentIntentAdapter.validate_python(
                 reconciled_payload,
@@ -711,7 +728,9 @@ async def finalize_object_success(
             if current.object_type == "product"
             else None
         )
-        current.product_hash = payload_digest if current.object_type == "product" else ""
+        current.product_hash = (
+            payload_digest if current.object_type == "product" else ""
+        )
         current.subscription = (
             StripeSubscriptionAdapter.validate_python(
                 reconciled_payload,

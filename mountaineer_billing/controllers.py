@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import stripe
 from fastapi import APIRouter, Depends, Request
@@ -44,9 +44,12 @@ async def stripe_webhook(
         LOGGER.error(f"Invalid stripe webhook signature: {e}: {signature_header}")
         raise e
 
+    reconcile_run = cast(Any, daemons.ReconcileStripeObjects().run)
+    project_run = cast(Any, daemons.ProjectStripeBilling().run)
+
     await daemons.UpdateStripe().run(payload=event)
-    await daemons.ReconcileStripeObjects().run(limit=25, _blocking=False)
-    await daemons.ProjectStripeBilling().run(limit=25, _blocking=False)
+    await reconcile_run(limit=25, _blocking=False)
+    await project_run(limit=25, _blocking=False)
 
     return dict(success=True, event_id=event["id"])
 

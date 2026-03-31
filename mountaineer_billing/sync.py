@@ -462,8 +462,8 @@ class BillingSync:
         # Check if this mapping already exists
         billing_product_price_class = self.config.BILLING_PRODUCT_PRICE
         existing_query = select(billing_product_price_class).where(
-            billing_product_price_class.product_id == product.id,  # type: ignore
-            billing_product_price_class.price_id == price.id,  # type: ignore
+            billing_product_price_class.product_id == product.id,
+            billing_product_price_class.price_id == price.id,
             billing_product_price_class.frequency == price.frequency,
         )
         existing_mappings = await db_connection.exec(existing_query)
