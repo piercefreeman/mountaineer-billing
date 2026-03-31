@@ -1,0 +1,66 @@
+{
+    "id": "evt_1RPsA7RGAudMahWRCd39r7Gp",
+    "object": "event",
+    "api_version": "2025-04-30.basil",
+    "created": 1747516854,
+    "data": {
+        "object": {
+            "id": "pm_1RPsA4RGAudMahWRxW70GZDe",
+            "object": "payment_method",
+            "allow_redisplay": "limited",
+            "billing_details": {
+                "address": {
+                    "city": null,
+                    "country": "US",
+                    "line1": null,
+                    "line2": null,
+                    "postal_code": "94949",
+                    "state": null
+                },
+                "email": "piercefreeman@gmail.com",
+                "name": "Pierce Freeman",
+                "phone": null,
+                "tax_id": null
+            },
+            "card": {
+                "brand": "visa",
+                "checks": {
+                    "address_line1_check": null,
+                    "address_postal_code_check": "pass",
+                    "cvc_check": "pass"
+                },
+                "country": "US",
+                "display_brand": "visa",
+                "exp_month": 12,
+                "exp_year": 2028,
+                "fingerprint": "l9yv5L4ZxqVoNW9B",
+                "funding": "credit",
+                "generated_from": null,
+                "last4": "4242",
+                "networks": {
+                    "available": [
+                        "visa"
+                    ],
+                    "preferred": null
+                },
+                "regulated_status": "unregulated",
+                "three_d_secure_usage": {
+                    "supported": true
+                },
+                "wallet": null
+            },
+            "created": 1747516852,
+            "customer": "cus_SKXENLZtmfAcAK",
+            "livemode": false,
+            "metadata": {},
+            "type": "card"
+        }
+    },
+    "livemode": false,
+    "pending_webhooks": 2,
+    "request": {
+        "id": null,
+        "idempotency_key": "794f3352-1c35-4bc6-a477-91682df4c882"
+    },
+    "type": "payment_method.attached"
+}

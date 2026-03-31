@@ -1,0 +1,53 @@
+{
+    "id": "evt_1RPsBLRGAudMahWRwLu8W6MS",
+    "object": "event",
+    "api_version": "2025-04-30.basil",
+    "created": 1747516930,
+    "data": {
+        "object": {
+            "id": "cus_SKXFxw9dIHhkS4",
+            "object": "customer",
+            "address": {
+                "city": null,
+                "country": "US",
+                "line1": null,
+                "line2": null,
+                "postal_code": "94109",
+                "state": null
+            },
+            "balance": 0,
+            "created": 1747516930,
+            "currency": null,
+            "default_source": null,
+            "delinquent": false,
+            "description": null,
+            "discount": null,
+            "email": "piercefreeman@gmail.com",
+            "invoice_prefix": "04IDTEUR",
+            "invoice_settings": {
+                "custom_fields": null,
+                "default_payment_method": null,
+                "footer": null,
+                "rendering_options": null
+            },
+            "livemode": false,
+            "metadata": {},
+            "name": "Pierce Freeman",
+            "next_invoice_sequence": 1,
+            "phone": null,
+            "preferred_locales": [
+                "en-US"
+            ],
+            "shipping": null,
+            "tax_exempt": "none",
+            "test_clock": null
+        }
+    },
+    "livemode": false,
+    "pending_webhooks": 2,
+    "request": {
+        "id": null,
+        "idempotency_key": "d35657ee-25f3-4dd2-b1b9-e75a9ba3097a"
+    },
+    "type": "customer.created"
+}
