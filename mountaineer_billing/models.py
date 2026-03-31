@@ -1,10 +1,16 @@
 from datetime import date, datetime
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import UUID, uuid4
 
-from iceaxe import Field, PostgresDateTime, TableBase, UniqueConstraint
+from iceaxe import (
+    Field,
+    IndexConstraint,
+    PostgresDateTime,
+    TableBase,
+    UniqueConstraint,
+)
 
-from mountaineer_billing.enums import PriceBillingInterval, StripeStatus
+from mountaineer_billing.enums import PriceBillingInterval, StripeStatus, SyncStatus
 from mountaineer_billing.products import MeteredIDBase, PriceIDBase, ProductIDBase
 
 ProductIDType = TypeVar("ProductIDType", bound=ProductIDBase)
@@ -20,7 +26,7 @@ class UserBillingMixin(TableBase, autodetect=False):
     full_name: str | None = None
 
     # None until the user has gone through a purchase order flow
-    stripe_customer_id: str | None = None
+    stripe_customer_id: str | None = Field(default=None, unique=True)
 
 
 class ResourceAccess(TableBase, Generic[ProductIDType], autodetect=False):
@@ -86,7 +92,7 @@ class Subscription(TableBase, autodetect=False):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
 
     # Only provided if this ties to an ongoing subscription
-    stripe_subscription_id: str | None
+    stripe_subscription_id: str | None = Field(default=None, unique=True)
     stripe_status: StripeStatus | None
     stripe_current_period_start: datetime | None = Field(
         postgres_config=PostgresDateTime(timezone=True),
@@ -179,7 +185,7 @@ class ProductPrice(TableBase, Generic[ProductIDType, PriceIDType], autodetect=Fa
     price_id: PriceIDType
     frequency: PriceBillingInterval
 
-    stripe_price_id: str
+    stripe_price_id: str = Field(unique=True)
 
 
 class CheckoutSession(TableBase, autodetect=False):
@@ -189,8 +195,139 @@ class CheckoutSession(TableBase, autodetect=False):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
 
+    stripe_checkout_session_id: str | None = Field(default=None, unique=True)
     stripe_payment_intent_id: str | None
     stripe_subscription_id: str | None
     stripe_customer_id: str | None
 
     user_id: UUID
+
+
+class StripeEvent(TableBase, autodetect=False):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+
+    stripe_event_id: str = Field(unique=True)
+    stripe_event_type: str
+    stripe_object_id: str | None = None
+    stripe_object_type: str | None = None
+    stripe_customer_id: str | None = None
+    livemode: bool = False
+    stripe_created_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    payload: dict[str, Any] = Field(default_factory=dict, is_json=True)
+
+    table_args = [
+        IndexConstraint(columns=["stripe_object_id"]),
+        IndexConstraint(columns=["stripe_customer_id"]),
+    ]
+
+
+class StripeObject(TableBase, autodetect=False):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.now,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+
+    stripe_id: str
+    object_type: str
+    livemode: bool = False
+    api_version: str | None = None
+
+    payload: dict[str, Any] = Field(default_factory=dict, is_json=True)
+    payload_hash: str = ""
+
+    stripe_customer_id: str | None = None
+    internal_user_id: UUID | None = None
+
+    sync_status: SyncStatus = SyncStatus.PENDING
+    dirty_since: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    latest_event_created_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    last_reconciled_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    next_reconcile_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    locked_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    retry_count: int = 0
+    last_error: str | None = None
+
+    remote_created_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    remote_deleted_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+
+    table_args = [
+        UniqueConstraint(columns=["stripe_id", "livemode"]),
+        IndexConstraint(columns=["object_type", "sync_status"]),
+        IndexConstraint(columns=["stripe_customer_id", "sync_status"]),
+        IndexConstraint(columns=["next_reconcile_at"]),
+    ]
+
+
+class BillingProjectionState(TableBase, autodetect=False):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.now,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+
+    stripe_customer_id: str = Field(unique=True)
+    internal_user_id: UUID | None = None
+
+    projection_status: SyncStatus = SyncStatus.PENDING
+    dirty_since: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    last_projected_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    next_project_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    locked_at: datetime | None = Field(
+        default=None,
+        postgres_config=PostgresDateTime(timezone=True),
+    )
+    retry_count: int = 0
+    last_error: str | None = None
+
+    table_args = [
+        IndexConstraint(columns=["projection_status", "next_project_at"]),
+    ]

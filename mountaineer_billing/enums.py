@@ -33,6 +33,13 @@ class StripeWebhookType(StrEnum):
     CHECKOUT_SESSION_COMPLETE = "checkout.session.completed"
 
 
+class SyncStatus(StrEnum):
+    PENDING = "pending"
+    SYNCING = "syncing"
+    CLEAN = "clean"
+    FAILED = "failed"
+
+
 class RollupType(StrEnum):
     # Considers usage over time
     # For instance, a user receives 10 credits in the first month that

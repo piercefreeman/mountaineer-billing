@@ -21,6 +21,9 @@ class BillingConfig(BaseSettings):
     BILLING_METERED_USAGE: Type[models.MeteredUsage]
     BILLING_PAYMENT: Type[models.Payment]
     BILLING_CHECKOUT_SESSION: Type[models.CheckoutSession]
+    BILLING_STRIPE_EVENT: Type[models.StripeEvent]
+    BILLING_STRIPE_OBJECT: Type[models.StripeObject]
+    BILLING_PROJECTION_STATE: Type[models.BillingProjectionState]
 
     # Definition of the metadata of resources that are billed with some limits
     BILLING_METERED: Mapping[MeteredIDBase, MeteredDefinition]

@@ -16,6 +16,9 @@ from mountaineer_billing.products import (
 )
 
 INTERNAL_ID_KEY = "internal_id"
+INTERNAL_PRODUCT_ID_KEY = "internal_product_id"
+INTERNAL_PRICE_ID_KEY = "internal_price_id"
+INTERNAL_FREQUENCY_KEY = "internal_frequency"
 
 
 class MarketingFeature(BaseModel):
@@ -64,6 +67,7 @@ class RemotePrice(BaseModel):
 
     unit_amount: int | None
     currency: str
+    metadata: dict[str, str] = {}
 
     model_config = {
         "frozen": True,
@@ -550,4 +554,9 @@ class BillingSync:
             recurring=remote_recurring,
             unit_amount=price.cost,
             currency=price.currency.lower(),
+            metadata={
+                INTERNAL_PRODUCT_ID_KEY: str(product.id),
+                INTERNAL_PRICE_ID_KEY: str(price.id),
+                INTERNAL_FREQUENCY_KEY: price.frequency.value,
+            },
         )

@@ -11,7 +11,9 @@ dependencies = [
     "stripe>=12.1.0",
     "iceaxe>=0.0.0,<1.0.0",
     "grpcio>=1.71.2",
-    "waymark>=0.22.0",
+    "waymark",
+    "mountaineer",
+    "mountaineer-auth",
 ]
 
 [build-system]
@@ -21,19 +23,15 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "ruff>=0.2.1",
-    "mypy>=1.8.0",
     "pytest>=8.0.0",
     "types-stripe>=3.5.2.20240106",
     "pytest-asyncio>=0.23.5",
-    "pyright>=1.1.352",
     "freezegun>=1.5.1",
-    "mountaineer>=0.10.0.dev2",
-    "mountaineer-auth",
 ]
 
 [tool.uv.sources]
 #mountaineer = { path = "../../mountaineer", editable = true }
-mountaineer-auth = { path = "../mountaineer-auth", editable = true }
+#mountaineer-auth = { path = "../mountaineer-auth", editable = true }
 
 [tool.mypy]
 warn_return_any = true

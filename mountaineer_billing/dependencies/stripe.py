@@ -16,6 +16,8 @@ from mountaineer_billing.products import (
     ProductIDBase,
 )
 
+INTERNAL_USER_ID_KEY = "internal_user_id"
+
 
 async def stripe_customer_id_for_user(
     user: UserAuthMixin = Depends(AuthDependencies.require_valid_user),
@@ -41,6 +43,9 @@ async def stripe_customer_id_for_user(
     stripe_customer = stripe.Customer.create(
         name=user.full_name or "Guest Customer",
         email=user.email,
+        metadata={
+            INTERNAL_USER_ID_KEY: str(user.id),
+        },
         api_key=config.STRIPE_API_KEY,
     )
 
@@ -105,6 +110,7 @@ def checkout_builder(
         CoreDependencies.get_config_with_type(BillingConfig)
     ),
     stripe_customer_id: str = Depends(stripe_customer_id_for_user),
+    user: models.UserBillingMixin = Depends(AuthDependencies.require_valid_user),
 ):
     """
     Build the URL for a new checkout session, given a list of product objects
@@ -164,24 +170,38 @@ def checkout_builder(
                 )
 
         # Create a new checkout for the given user
-        checkout_session = stripe.checkout.Session.create(
-            customer=stripe_customer_id,
-            line_items=[
+        metadata = {
+            INTERNAL_USER_ID_KEY: str(user.id),
+        }
+        checkout_mode = (
+            "payment"
+            if billing_intervals == {PriceBillingInterval.ONETIME}
+            else "subscription"
+        )
+        checkout_kwargs: dict[str, object] = {
+            "customer": stripe_customer_id,
+            "client_reference_id": str(user.id),
+            "line_items": [
                 {
                     "price": price_id,
                     "quantity": 1,
                 }
                 for price_id in stripe_price_ids
             ],
-            mode=(
-                "payment"
-                if billing_intervals == {PriceBillingInterval.ONETIME}
-                else "subscription"
-            ),
-            success_url=success_url,
-            cancel_url=cancel_url,
-            allow_promotion_codes=allow_promotion_codes,
-            api_key=config.STRIPE_API_KEY,
+            "mode": checkout_mode,
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+            "allow_promotion_codes": allow_promotion_codes,
+            "metadata": metadata,
+            "api_key": config.STRIPE_API_KEY,
+        }
+        if checkout_mode == "payment":
+            checkout_kwargs["payment_intent_data"] = {"metadata": metadata}
+        else:
+            checkout_kwargs["subscription_data"] = {"metadata": metadata}
+
+        checkout_session = stripe.checkout.Session.create(
+            **checkout_kwargs,
         )
         return checkout_session.url
 

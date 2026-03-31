@@ -75,3 +75,17 @@ Card Number: 4242 4242 4242 4242
 Expiration: Any future date
 CVC: Any 3 digits
 ```
+
+## Stripe schema generation
+
+Use the standalone `uv` script in `scripts/` to clone Stripe's public OpenAPI repo history, deduplicate schema revisions by `info.version`, and generate versioned Pydantic packages under `mountaineer_billing/stripe/`.
+
+```bash
+uv run scripts/generate_stripe_models.py
+```
+
+You can also limit generation to a single Stripe API version while testing:
+
+```bash
+uv run scripts/generate_stripe_models.py --api-version 2026-03-25.dahlia
+```
