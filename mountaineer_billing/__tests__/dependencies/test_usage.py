@@ -145,7 +145,7 @@ async def test_get_user_metered_usage_cycle(
         is_perpetual=False,
         stripe_price_id=None,
         stripe_product_id=None,
-        subscription_id=None,
+        stripe_subscription_id=None,
         product_id=models.ProductID.SUBSCRIPTION_GOLD,
         user_id=user.id,
     )

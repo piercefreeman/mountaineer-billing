@@ -1,4 +1,37 @@
-from datetime import date, datetime
+"""
+Billing models are intentionally split into separate layers.
+
+Identity and catalog:
+- ``UserBillingMixin`` stores the local user fields needed to create and recover
+  Stripe customers.
+- ``ProductPrice`` maps stable local product/price identifiers onto Stripe price ids.
+
+Derived billing projections:
+- ``CheckoutSession``, ``Subscription``, ``ResourceAccess``, and ``Payment`` are
+  fast-read tables built from the raw Stripe mirror.
+- The application should read these tables directly.
+- These tables keep Stripe ids for provenance, but they do not form a deep local
+  foreign-key graph. The projection daemon can therefore rebuild them wholesale
+  for a customer without having to preserve local row identities.
+
+Raw Stripe mirror and workflow state:
+- ``StripeEvent`` is an immutable audit log of validated webhook payloads.
+- ``StripeObject`` stores the latest canonical snapshot of each Stripe object plus
+  reconciliation state.
+- ``BillingProjectionState`` stores customer-scoped work state for the projection
+  daemon.
+
+Local-only usage:
+- ``MeteredUsage`` remains a local ledger of consumed usage. Purchased state can be
+  rebuilt from Stripe, but consumed usage cannot unless it is moved to Stripe or
+  another external ledger.
+
+The intended flow is: webhook -> ``StripeEvent`` -> dirty ``StripeObject`` -> raw
+reconcile daemon -> dirty ``BillingProjectionState`` -> projection daemon ->
+app-facing billing tables.
+"""
+
+from datetime import date, datetime, timezone
 from typing import Any, Generic, TypeVar
 from uuid import UUID, uuid4
 
@@ -16,10 +49,27 @@ from mountaineer_billing.products import MeteredIDBase, PriceIDBase, ProductIDBa
 ProductIDType = TypeVar("ProductIDType", bound=ProductIDBase)
 PriceIDType = TypeVar("PriceIDType", bound=PriceIDBase)
 MeteredIDBaseType = TypeVar("MeteredIDBaseType", bound=MeteredIDBase)
+TIMESTAMPTZ = PostgresDateTime(timezone=True)
 
 
-class UserBillingMixin(TableBase, autodetect=False):
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class BillingIdentityMixin(TableBase, autodetect=False):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+
+class CreatedAtMixin(BillingIdentityMixin, autodetect=False):
+    created_at: datetime = Field(default_factory=utcnow, postgres_config=TIMESTAMPTZ)
+
+
+class TimestampedMixin(CreatedAtMixin, autodetect=False):
+    updated_at: datetime = Field(default_factory=utcnow, postgres_config=TIMESTAMPTZ)
+
+
+class UserBillingMixin(BillingIdentityMixin, autodetect=False):
+    """Local user fields needed for Stripe identity and checkout bootstrapping."""
 
     # Used to pre-seed checkout, fill out if you collect during your
     # signup process
@@ -29,57 +79,34 @@ class UserBillingMixin(TableBase, autodetect=False):
     stripe_customer_id: str | None = Field(default=None, unique=True)
 
 
-class ResourceAccess(TableBase, Generic[ProductIDType], autodetect=False):
+class ResourceAccess(TimestampedMixin, Generic[ProductIDType], autodetect=False):
     """
-    ResourceAccess grants access to software.
+    Derived entitlement rows used by the application.
 
-    The simplest case perhaps is a subscription. Users pay for the subscription every
-    month until they cancel. And until they do, they have a valid ResourceAccess object
-    for that given resource.
-
-    One-off purchases will simply be permanent ResourceAccess objects that don't
-    have an end date. You can think of these like never-ending subscriptions.
-
-    ResourceAccess objects are intended to be summed; if a user has multiple ResourceAccess
-    objects for a given product, their specific quotas should be summed. Compare to MeteredUsage
-    to determine if the user has exceeded their quota.
-
-    Technically, this corresponds to a combination of a Subscription Item and an Invoice.
-
+    These rows are projections over Stripe subscriptions, subscription items, and
+    one-time purchases. They deliberately keep Stripe ids for traceability, but the
+    rows themselves are disposable and can be rebuilt from the raw mirror at any time.
     """
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-
-    # Attribute of the object in the local DB
-    created_at: datetime = Field(
-        default_factory=datetime.now,
-        postgres_config=PostgresDateTime(timezone=True),
-    )
-    updated_at: datetime = Field(
-        default_factory=datetime.now,
-        postgres_config=PostgresDateTime(timezone=True),
-    )
 
     # Datetime range for the actual access validity
     # If `ended_datetime` has passed, then the user no longer has access
     # to this resource
     started_datetime: datetime | None = Field(
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     ended_datetime: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
 
-    # One of these will be true
-    subscription_id: UUID | None
+    stripe_subscription_id: str | None = None
     is_perpetual: bool = False
 
     # If a subscription ended early, we should prorate their utilization
     prorated_usage: float = 1.0
 
-    stripe_price_id: str | None
-    stripe_product_id: str | None
+    stripe_price_id: str | None = None
+    stripe_product_id: str | None = None
 
     product_id: ProductIDType
 
@@ -88,39 +115,25 @@ class ResourceAccess(TableBase, Generic[ProductIDType], autodetect=False):
     user_id: UUID
 
 
-class Subscription(TableBase, autodetect=False):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
+class Subscription(BillingIdentityMixin, autodetect=False):
+    """Derived subscription state built from raw Stripe subscription objects."""
 
-    # Only provided if this ties to an ongoing subscription
     stripe_subscription_id: str | None = Field(default=None, unique=True)
-    stripe_status: StripeStatus | None
+    stripe_status: StripeStatus | None = None
     stripe_current_period_start: datetime | None = Field(
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     stripe_current_period_end: datetime | None = Field(
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
 
-    checkout_session_id: UUID | None = None
+    stripe_checkout_session_id: str | None = None
 
     user_id: UUID
 
 
-class MeteredUsage(TableBase, Generic[MeteredIDBaseType], autodetect=False):
-    """
-    Tracks local usage for a given resource.
-
-    """
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-
-    # Attribute of the object in the local DB
-    created_at: datetime = Field(
-        default_factory=datetime.now, postgres_config=PostgresDateTime(timezone=True)
-    )
-    updated_at: datetime = Field(
-        default_factory=datetime.now, postgres_config=PostgresDateTime(timezone=True)
-    )
+class MeteredUsage(TimestampedMixin, Generic[MeteredIDBaseType], autodetect=False):
+    """Local ledger of consumed usage for metered entitlements."""
 
     metered_id: MeteredIDBaseType
     metered_date: date
@@ -143,20 +156,8 @@ class MeteredUsage(TableBase, Generic[MeteredIDBaseType], autodetect=False):
     ]
 
 
-class Payment(TableBase, autodetect=False):
-    """
-    Confirmation of a completed payment
-    """
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-
-    # Attribute of the object in the local DB
-    created_at: datetime = Field(
-        default_factory=datetime.now, postgres_config=PostgresDateTime(timezone=True)
-    )
-    updated_at: datetime = Field(
-        default_factory=datetime.now, postgres_config=PostgresDateTime(timezone=True)
-    )
+class Payment(TimestampedMixin, autodetect=False):
+    """Derived payment ledger rows used for fast billing history queries."""
 
     # Stripe-specific fields
     paid_amount: int
@@ -173,13 +174,10 @@ class Payment(TableBase, autodetect=False):
     user_id: UUID
 
 
-class ProductPrice(TableBase, Generic[ProductIDType, PriceIDType], autodetect=False):
+class ProductPrice(BillingIdentityMixin, Generic[ProductIDType, PriceIDType], autodetect=False):
     """
-    Runtime state of product prices, assigns the stripe ID.
-
+    Local catalog mapping from stable app ids to live Stripe price ids.
     """
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
 
     product_id: ProductIDType
     price_id: PriceIDType
@@ -188,12 +186,13 @@ class ProductPrice(TableBase, Generic[ProductIDType, PriceIDType], autodetect=Fa
     stripe_price_id: str = Field(unique=True)
 
 
-class CheckoutSession(TableBase, autodetect=False):
+class CheckoutSession(BillingIdentityMixin, autodetect=False):
     """
-    Local mirror of a stripe checkout session
-    """
+    Derived checkout-session projection used by the application.
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    This is not the raw Stripe mirror; the full Stripe payload lives in
+    ``StripeObject``. This table stores only the stable fields the app queries.
+    """
 
     stripe_checkout_session_id: str | None = Field(default=None, unique=True)
     stripe_payment_intent_id: str | None
@@ -203,13 +202,8 @@ class CheckoutSession(TableBase, autodetect=False):
     user_id: UUID
 
 
-class StripeEvent(TableBase, autodetect=False):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-
-    created_at: datetime = Field(
-        default_factory=datetime.now,
-        postgres_config=PostgresDateTime(timezone=True),
-    )
+class StripeEvent(CreatedAtMixin, autodetect=False):
+    """Immutable audit log of validated Stripe webhook events."""
 
     stripe_event_id: str = Field(unique=True)
     stripe_event_type: str
@@ -219,7 +213,7 @@ class StripeEvent(TableBase, autodetect=False):
     livemode: bool = False
     stripe_created_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     payload: dict[str, Any] = Field(default_factory=dict, is_json=True)
 
@@ -229,17 +223,13 @@ class StripeEvent(TableBase, autodetect=False):
     ]
 
 
-class StripeObject(TableBase, autodetect=False):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
+class StripeObject(TimestampedMixin, autodetect=False):
+    """
+    Latest canonical local snapshot of a Stripe object.
 
-    created_at: datetime = Field(
-        default_factory=datetime.now,
-        postgres_config=PostgresDateTime(timezone=True),
-    )
-    updated_at: datetime = Field(
-        default_factory=datetime.now,
-        postgres_config=PostgresDateTime(timezone=True),
-    )
+    The ``payload`` column intentionally stores the full Stripe JSON so schema drift
+    on Stripe's side does not force a local migration for every field change.
+    """
 
     stripe_id: str
     object_type: str
@@ -255,34 +245,34 @@ class StripeObject(TableBase, autodetect=False):
     sync_status: SyncStatus = SyncStatus.PENDING
     dirty_since: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     latest_event_created_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     last_reconciled_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     next_reconcile_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     locked_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     retry_count: int = 0
     last_error: str | None = None
 
     remote_created_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     remote_deleted_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
 
     table_args = [
@@ -293,17 +283,8 @@ class StripeObject(TableBase, autodetect=False):
     ]
 
 
-class BillingProjectionState(TableBase, autodetect=False):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-
-    created_at: datetime = Field(
-        default_factory=datetime.now,
-        postgres_config=PostgresDateTime(timezone=True),
-    )
-    updated_at: datetime = Field(
-        default_factory=datetime.now,
-        postgres_config=PostgresDateTime(timezone=True),
-    )
+class BillingProjectionState(TimestampedMixin, autodetect=False):
+    """Customer-scoped work state for rebuilding derived billing projections."""
 
     stripe_customer_id: str = Field(unique=True)
     internal_user_id: UUID | None = None
@@ -311,19 +292,19 @@ class BillingProjectionState(TableBase, autodetect=False):
     projection_status: SyncStatus = SyncStatus.PENDING
     dirty_since: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     last_projected_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     next_project_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     locked_at: datetime | None = Field(
         default=None,
-        postgres_config=PostgresDateTime(timezone=True),
+        postgres_config=TIMESTAMPTZ,
     )
     retry_count: int = 0
     last_error: str | None = None

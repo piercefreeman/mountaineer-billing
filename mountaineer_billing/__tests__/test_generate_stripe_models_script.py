@@ -103,6 +103,12 @@ def test_collect_schema_revisions_prefers_latest_schema(tmp_path: Path):
 
     _write_json(
         repo_dir / "openapi" / "spec3.json",
+        _make_schema(version="2022-12-31.basil", title="legacy-pre-cutoff"),
+    )
+    _commit_all(repo_dir, "legacy pre cutoff")
+
+    _write_json(
+        repo_dir / "openapi" / "spec3.json",
         _make_schema(version="2025-01-01.acacia", title="legacy-one"),
     )
     _commit_all(repo_dir, "legacy one")
@@ -125,7 +131,10 @@ def test_collect_schema_revisions_prefers_latest_schema(tmp_path: Path):
     )
     _commit_all(repo_dir, "legacy duplicate")
 
-    revisions = stripe_codegen.collect_schema_revisions(repo_dir)
+    revisions = stripe_codegen.filter_revisions_by_min_year(
+        stripe_codegen.collect_schema_revisions(repo_dir),
+        min_api_year=2023,
+    )
 
     assert [revision.api_version for revision in revisions] == [
         "2025-01-01.acacia",
@@ -141,6 +150,12 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
     repo_dir = tmp_path / "stripe-openapi"
     repo_dir.mkdir()
     _init_repo(repo_dir)
+
+    _write_json(
+        repo_dir / "openapi" / "spec3.json",
+        _make_schema(version="2022-12-31.basil", title="legacy-pre-cutoff"),
+    )
+    _commit_all(repo_dir, "legacy pre cutoff")
 
     _write_json(
         repo_dir / "openapi" / "spec3.json",

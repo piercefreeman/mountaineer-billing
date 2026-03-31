@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from uuid import UUID
 
 from iceaxe import DBConnection, delete, or_, select
 from pydantic import BaseModel
@@ -150,7 +149,7 @@ async def project_dirty_billing_states(
             payment_rows: list[models.Payment] = []
             checkout_session_rows: list[models.CheckoutSession] = []
 
-            checkout_session_id_by_subscription: dict[str, UUID] = {}
+            checkout_session_by_subscription: dict[str, str] = {}
             for payload in checkout_sessions_payload:
                 checkout_session_id = payload.get("id")
                 if not isinstance(checkout_session_id, str):
@@ -166,8 +165,8 @@ async def project_dirty_billing_states(
                 )
                 checkout_session_rows.append(checkout_session_row)
                 if stripe_subscription_id:
-                    checkout_session_id_by_subscription[stripe_subscription_id] = (
-                        checkout_session_row.id
+                    checkout_session_by_subscription[stripe_subscription_id] = (
+                        checkout_session_id
                     )
 
             for payload in subscriptions_payload:
@@ -180,7 +179,7 @@ async def project_dirty_billing_states(
                     stripe_status=safe_stripe_status(payload.get("status")),
                     stripe_current_period_start=subscription_period_start(payload),
                     stripe_current_period_end=subscription_period_end(payload),
-                    checkout_session_id=checkout_session_id_by_subscription.get(
+                    stripe_checkout_session_id=checkout_session_by_subscription.get(
                         stripe_subscription_id
                     ),
                     user_id=user.id,
@@ -205,7 +204,7 @@ async def project_dirty_billing_states(
                             started_datetime=to_datetime(item.get("current_period_start"))
                             or subscription_period_start(payload),
                             ended_datetime=ended_at,
-                            subscription_id=subscription_row.id,
+                            stripe_subscription_id=stripe_subscription_id,
                             stripe_price_id=price_id,
                             stripe_product_id=line_item_product_id(item),
                             product_id=local_price.product_id,
@@ -338,7 +337,7 @@ async def project_dirty_billing_states(
                     resource_rows.append(
                         config.BILLING_RESOURCE_ACCESS(
                             started_datetime=to_datetime(payload.get("created")),
-                            subscription_id=None,
+                            stripe_subscription_id=None,
                             is_perpetual=True,
                             prorated_usage=float(quantity or 1),
                             stripe_price_id=price_id,

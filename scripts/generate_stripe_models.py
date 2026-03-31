@@ -3,6 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #   "datamodel-code-generator>=0.35.0",
+#   "rich>=13.9.0",
 # ]
 # ///
 
@@ -17,7 +18,18 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Any
+
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_REPO_URL = "https://github.com/stripe/openapi.git"
@@ -26,6 +38,7 @@ DEFAULT_SCHEMA_PATHS = (
     "preview/openapi.spec3.json",
     "openapi/spec3.json",
 )
+DEFAULT_MIN_API_YEAR = 2023
 DEFAULT_REPO_DIR = REPO_ROOT / ".cache" / "stripe-openapi"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "mountaineer_billing" / "stripe"
 PATH_PRIORITY = {
@@ -33,6 +46,8 @@ PATH_PRIORITY = {
     "preview/openapi.spec3.json": 1,
     "openapi/spec3.json": 2,
 }
+HEARTBEAT_SECONDS = 10.0
+CONSOLE = Console()
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,15 +70,51 @@ def _run_command(
     *,
     cwd: Path | None = None,
     check: bool = True,
+    description: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    if description is None:
+        try:
+            return subprocess.run(
+                command,
+                cwd=cwd,
+                check=check,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.strip() if exc.stderr else ""
+            stdout = exc.stdout.strip() if exc.stdout else ""
+            details = stderr or stdout or "command failed"
+            raise RuntimeError(f"{shlex.join(command)}: {details}") from exc
+
+    started = monotonic()
+    CONSOLE.log(f"[cyan]{description}[/cyan]")
+
     try:
-        return subprocess.run(
+        process = subprocess.Popen(
             command,
             cwd=cwd,
-            check=check,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
         )
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=HEARTBEAT_SECONDS)
+                break
+            except subprocess.TimeoutExpired:
+                elapsed = monotonic() - started
+                CONSOLE.log(
+                    f"[dim]{description} is still running ({elapsed:.0f}s elapsed)[/dim]"
+                )
+        if check and process.returncode:
+            raise subprocess.CalledProcessError(
+                process.returncode,
+                command,
+                output=stdout,
+                stderr=stderr,
+            )
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip() if exc.stderr else ""
         stdout = exc.stdout.strip() if exc.stdout else ""
@@ -94,12 +145,35 @@ def package_name_for_version(api_version: str) -> str:
     return f"v{normalized}"
 
 
+def api_version_year(api_version: str) -> int | None:
+    match = re.match(r"^(?P<year>\d{4})-\d{2}-\d{2}", api_version)
+    if not match:
+        return None
+    return int(match.group("year"))
+
+
+def filter_revisions_by_min_year(
+    revisions: list[StripeSchemaRevision],
+    *,
+    min_api_year: int,
+) -> list[StripeSchemaRevision]:
+    return [
+        revision
+        for revision in revisions
+        if (api_year := api_version_year(revision.api_version)) is not None
+        and api_year >= min_api_year
+    ]
+
+
 def collect_schema_revisions(
     repo_dir: Path,
     *,
     include_preview: bool = False,
 ) -> list[StripeSchemaRevision]:
     schema_paths = _schema_paths(include_preview)
+    CONSOLE.log(
+        f"[cyan]Scanning git history for schema revisions in[/cyan] [bold]{repo_dir}[/bold]"
+    )
     raw_commits = _git_output(
         repo_dir,
         "rev-list",
@@ -127,35 +201,56 @@ def collect_schema_revisions(
     }
     revisions_by_version: dict[str, _RankedRevision] = {}
 
-    for commit_index, commit_sha in enumerate(raw_commits):
-        for schema_path in sorted(schema_paths, key=lambda path: PATH_PRIORITY[path]):
-            if commit_sha not in commits_by_path[schema_path]:
-                continue
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=CONSOLE,
+    ) as progress:
+        scan_task = progress.add_task(
+            "Scanning schema commits", total=len(raw_commits)
+        )
 
-            raw_schema = _git_output(repo_dir, "show", f"{commit_sha}:{schema_path}")
-            schema = json.loads(raw_schema)
-            api_version = schema["info"]["version"]
-            ranked_revision = _RankedRevision(
-                revision=StripeSchemaRevision(
-                    api_version=api_version,
-                    commit_sha=commit_sha,
-                    schema_path=schema_path,
-                    package_name=package_name_for_version(api_version),
-                ),
-                commit_index=commit_index,
-                path_priority=PATH_PRIORITY[schema_path],
-            )
+        for commit_index, commit_sha in enumerate(raw_commits):
+            for schema_path in sorted(schema_paths, key=lambda path: PATH_PRIORITY[path]):
+                if commit_sha not in commits_by_path[schema_path]:
+                    continue
 
-            current = revisions_by_version.get(api_version)
-            if (
-                current is None
-                or ranked_revision.path_priority < current.path_priority
-                or (
-                    ranked_revision.path_priority == current.path_priority
-                    and ranked_revision.commit_index >= current.commit_index
+                raw_schema = _git_output(repo_dir, "show", f"{commit_sha}:{schema_path}")
+                schema = json.loads(raw_schema)
+                api_version = schema["info"]["version"]
+                ranked_revision = _RankedRevision(
+                    revision=StripeSchemaRevision(
+                        api_version=api_version,
+                        commit_sha=commit_sha,
+                        schema_path=schema_path,
+                        package_name=package_name_for_version(api_version),
+                    ),
+                    commit_index=commit_index,
+                    path_priority=PATH_PRIORITY[schema_path],
                 )
-            ):
-                revisions_by_version[api_version] = ranked_revision
+                current = revisions_by_version.get(api_version)
+                if (
+                    current is None
+                    or ranked_revision.path_priority < current.path_priority
+                    or (
+                        ranked_revision.path_priority == current.path_priority
+                        and ranked_revision.commit_index >= current.commit_index
+                    )
+                ):
+                    revisions_by_version[api_version] = ranked_revision
+
+            progress.advance(scan_task)
+            if (commit_index + 1) % 25 == 0 or commit_index + 1 == len(raw_commits):
+                progress.update(
+                    scan_task,
+                    description=(
+                        "Scanning schema commits "
+                        f"({len(revisions_by_version)} versions found)"
+                    ),
+                )
 
     return [
         ranked_revision.revision
@@ -296,6 +391,7 @@ def _generate_models(
     schema_path: Path,
     output_dir: Path,
     codegen_command: list[str],
+    api_version: str,
 ) -> None:
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -316,7 +412,10 @@ def _generate_models(
         "--use-annotated",
         "--disable-timestamp",
     ]
-    _run_command(command)
+    _run_command(
+        command,
+        description=f"Running datamodel-code-generator for Stripe {api_version}",
+    )
 
 
 def ensure_repo(
@@ -328,15 +427,23 @@ def ensure_repo(
     if not fetch:
         if not (repo_dir / ".git").exists():
             raise FileNotFoundError(f"Git repository not found: {repo_dir}")
+        CONSOLE.log(
+            f"[cyan]Using existing Stripe OpenAPI checkout[/cyan] [bold]{repo_dir}[/bold]"
+        )
         return repo_dir
 
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     if not (repo_dir / ".git").exists():
-        _run_command(["git", "clone", repo_url, str(repo_dir)], cwd=repo_dir.parent)
+        _run_command(
+            ["git", "clone", repo_url, str(repo_dir)],
+            cwd=repo_dir.parent,
+            description=f"Cloning Stripe OpenAPI repo into {repo_dir}",
+        )
     else:
         _run_command(
             ["git", "fetch", "--force", "--tags", "--prune", "--refetch", "origin"],
             cwd=repo_dir,
+            description=f"Fetching latest Stripe OpenAPI history in {repo_dir}",
         )
 
     return repo_dir
@@ -349,11 +456,18 @@ def generate_stripe_package(
     repo_url: str = DEFAULT_REPO_URL,
     codegen_command: str | None = None,
     include_preview: bool = False,
+    min_api_year: int = DEFAULT_MIN_API_YEAR,
     selected_versions: set[str] | None = None,
     fetch_repo: bool = True,
 ) -> list[StripeSchemaRevision]:
+    CONSOLE.rule("[bold blue]Stripe Model Generation")
+    CONSOLE.log(f"[cyan]Repo checkout:[/cyan] [bold]{repo_dir}[/bold]")
+    CONSOLE.log(f"[cyan]Output dir:[/cyan] [bold]{output_dir}[/bold]")
+    CONSOLE.log(f"[cyan]Minimum API year:[/cyan] [bold]{min_api_year}[/bold]")
+
     repo_dir = ensure_repo(repo_dir, repo_url=repo_url, fetch=fetch_repo)
     revisions = collect_schema_revisions(repo_dir, include_preview=include_preview)
+    revisions = filter_revisions_by_min_year(revisions, min_api_year=min_api_year)
 
     if selected_versions:
         revisions = [
@@ -365,26 +479,52 @@ def generate_stripe_package(
     if not revisions:
         raise RuntimeError("No Stripe schemas found for generation")
 
+    CONSOLE.log(f"[green]Found {len(revisions)} Stripe API version(s) to generate[/green]")
     _prepare_output_dir(output_dir)
     (output_dir / "__init__.py").write_text(_render_package_root_init())
     codegen_command_parts = _codegen_command_parts(codegen_command)
 
-    for revision in revisions:
-        package_dir = output_dir / revision.package_name
-        package_dir.mkdir(parents=True, exist_ok=True)
-
-        schema = _load_schema(repo_dir, revision)
-        schema_path = package_dir / "schema.json"
-        schema_path.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
-        (package_dir / "__init__.py").write_text(_render_version_package_init(revision))
-
-        _generate_models(
-            schema_path=schema_path,
-            output_dir=package_dir / "models",
-            codegen_command=codegen_command_parts,
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=CONSOLE,
+    ) as progress:
+        generate_task = progress.add_task(
+            "Generating versioned Stripe packages", total=len(revisions)
         )
 
+        for index, revision in enumerate(revisions, start=1):
+            progress.update(
+                generate_task,
+                description=(
+                    f"Generating Stripe {revision.api_version} "
+                    f"({index}/{len(revisions)})"
+                ),
+            )
+
+            package_dir = output_dir / revision.package_name
+            package_dir.mkdir(parents=True, exist_ok=True)
+
+            schema = _load_schema(repo_dir, revision)
+            schema_path = package_dir / "schema.json"
+            schema_path.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
+            (package_dir / "__init__.py").write_text(
+                _render_version_package_init(revision)
+            )
+
+            _generate_models(
+                schema_path=schema_path,
+                output_dir=package_dir / "models",
+                codegen_command=codegen_command_parts,
+                api_version=revision.api_version,
+            )
+            progress.advance(generate_task)
+
     (output_dir / "versions.json").write_text(_render_registry(revisions))
+    CONSOLE.log(f"[green]Wrote Stripe model registry to[/green] [bold]{output_dir}[/bold]")
     return revisions
 
 
@@ -418,6 +558,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include preview Stripe schemas in addition to GA and legacy specs.",
     )
     parser.add_argument(
+        "--min-api-year",
+        type=int,
+        default=DEFAULT_MIN_API_YEAR,
+        help="Only generate Stripe API versions whose year is at least this value.",
+    )
+    parser.add_argument(
         "--api-version",
         action="append",
         dest="api_versions",
@@ -441,6 +587,7 @@ def main(argv: list[str] | None = None) -> int:
         repo_url=args.repo_url,
         codegen_command=args.codegen_command,
         include_preview=args.include_preview,
+        min_api_year=args.min_api_year,
         selected_versions=set(args.api_versions) if args.api_versions else None,
         fetch_repo=not args.skip_fetch,
     )

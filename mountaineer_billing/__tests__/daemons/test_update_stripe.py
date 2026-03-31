@@ -142,7 +142,7 @@ async def test_subscription_event_reconciles_and_projects(
     resources = await db_connection.exec(select(models.ResourceAccess))
     assert len(resources) == 1
     assert resources[0].product_id == ProductID.SUBSCRIPTION_GOLD
-    assert resources[0].subscription_id == subscriptions[0].id
+    assert resources[0].stripe_subscription_id == subscriptions[0].stripe_subscription_id
     assert not resources[0].is_perpetual
 
 
