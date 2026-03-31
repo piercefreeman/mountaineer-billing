@@ -159,10 +159,8 @@ class StripeEvent(CreatedAtMixin, autodetect=False):
         return cast(
             "StripeEventPayload",
             StripeEventAdapter.validate_python(
-                payload_with_api_version(
-                    self.payload,
-                    api_version=self.payload.get("api_version"),
-                )
+                self.payload,
+                api_version=self.payload.get("api_version"),
             ),
         )
 

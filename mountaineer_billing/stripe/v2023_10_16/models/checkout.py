@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from ._deferred import BaseModel, Field, RootModel
 
@@ -514,3 +514,9 @@ class Session(BaseModel):
             max_length=5000,
         ),
     ] = None
+
+
+_MountaineerBillingOriginalSession = Session
+
+class Session(_MountaineerBillingOriginalSession):
+    mountaineer_billing_api_version: Literal['2023-10-16'] = '2023-10-16'

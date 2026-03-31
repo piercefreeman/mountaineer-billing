@@ -5,6 +5,8 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+from pydantic import BaseModel
+
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[2] / "scripts" / "generate_stripe_models.py"
 )
@@ -333,14 +335,17 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
         stripe_codegen.VERSION_DISCRIMINATOR_FIELD
         not in latest_schema["components"]["schemas"]["event"]["properties"]
     )
-    assert "LazyStripeAdapter" in generated_types
+    assert "from ._type_helpers import LazyAdapter, make_lazy_payload_type" in generated_types
+    assert "LazyStripeAdapter = LazyAdapter" in generated_types
     assert "TypeAdapter" not in generated_types
     assert f'VERSION_DISCRIMINATOR_FIELD = "{stripe_codegen.VERSION_DISCRIMINATOR_FIELD}"' in generated_types
     assert "if TYPE_CHECKING:" in generated_types
     assert "_MODEL_REGISTRY" in generated_types
+    assert "class LazyStripeAdapter" not in generated_types
     assert "parse_object_payload" not in generated_types
     assert "parse_event_payload" not in generated_types
     assert "_OBJECT_MODEL_TYPES" not in generated_types
+    assert (output_dir / "_type_helpers.py").exists()
     assert (output_dir / "__init__.py").exists()
     assert (output_dir / "v2026_02_25_clover" / "__init__.py").read_text().startswith(
         "from . import models"
@@ -358,6 +363,10 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
     assert "from ._deferred import BaseModel" in latest_internal
     assert "MountaineerBillingApiVersion" not in latest_internal
     assert stripe_codegen.VERSION_DISCRIMINATOR_FIELD not in latest_internal
+    assert stripe_codegen.VERSION_DISCRIMINATOR_FIELD in latest_models
+    assert stripe_codegen.VERSION_DISCRIMINATOR_FIELD in (
+        output_dir / "v2026_02_25_clover" / "models" / "checkout.py"
+    ).read_text()
     assert "from ._deferred import BaseModel, Field" in (
         output_dir / "v2026_02_25_clover" / "models" / "test_helpers.py"
     ).read_text()
@@ -539,43 +548,42 @@ def test_generated_types_module_resolves_version_specific_models(tmp_path: Path)
         older_subscription = generated_types.StripeSubscriptionAdapter.validate_python(
             {
                 "id": "sub_old",
-                version_field: "2024-04-10",
-            }
+            },
+            api_version="2024-04-10",
         )
         newer_subscription = generated_types.StripeSubscriptionAdapter.validate_python(
             {
                 "id": "sub_new",
-                version_field: "2026-02-25.clover",
-            }
+            },
+            api_version="2026-02-25.clover",
         )
         older_price = generated_types.StripePriceAdapter.validate_python(
             {
                 "id": "price_old",
-                version_field: "2024-04-10",
-            }
+            },
+            api_version="2024-04-10",
         )
         newer_price = generated_types.StripePriceAdapter.validate_python(
             {
                 "id": "price_new",
-                version_field: "2026-02-25.clover",
-            }
+            },
+            api_version="2026-02-25.clover",
         )
         checkout_session = generated_types.StripeCheckoutSessionAdapter.validate_python(
             {
                 "id": "cs_test",
-                version_field: "2026-02-25.clover",
-            }
+            },
+            api_version="2026-02-25.clover",
         )
         event_payload = generated_types.StripeEventAdapter.validate_python(
             {
                 "id": "evt_test",
-                version_field: "2026-02-25.clover",
-            }
+            },
+            api_version="2026-02-25.clover",
         )
         nested_subscription = generated_types.StripeSubscriptionAdapter.validate_python(
             {
                 "id": "sub_nested",
-                version_field: "2026-02-25.clover",
                 "items": {
                     "data": [
                         {
@@ -585,8 +593,22 @@ def test_generated_types_module_resolves_version_specific_models(tmp_path: Path)
                         }
                     ]
                 },
-            }
+            },
+            api_version="2026-02-25.clover",
         )
+        newer_subscription_type = (
+            generated_types.StripeSubscriptionAdapter.model_type_for_api_version(
+                "2026-02-25.clover"
+            )
+        )
+        directly_validated = newer_subscription_type.model_validate({"id": "sub_direct"})
+
+        class Wrapper(BaseModel):
+            subscription: generated_types.StripeSubscriptionPayload
+
+        wrapped = Wrapper(subscription=newer_subscription)
+        serialized = wrapped.model_dump(mode="json")
+        round_tripped = Wrapper.model_validate(serialized)
 
         assert older_subscription.__class__.__name__ == "Subscription"
         assert newer_subscription.__class__.__name__ == "SubscriptionModel"
@@ -596,6 +618,9 @@ def test_generated_types_module_resolves_version_specific_models(tmp_path: Path)
         assert event_payload.__class__.__name__ == "Event"
         assert nested_subscription.items is not None
         assert nested_subscription.items.data[0].price.id == "price_nested"
+        assert directly_validated.mountaineer_billing_api_version == "2026-02-25.clover"
+        assert serialized["subscription"][version_field] == "2026-02-25.clover"
+        assert round_tripped.subscription.__class__.__name__ == "SubscriptionModel"
         assert not hasattr(generated_types, "parse_object_payload")
         assert not hasattr(generated_types, "parse_event_payload")
     finally:

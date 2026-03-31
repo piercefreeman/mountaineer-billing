@@ -42,6 +42,7 @@ DEFAULT_SCHEMA_PATHS = (
 DEFAULT_MIN_API_YEAR = 2023
 DEFAULT_REPO_DIR = REPO_ROOT / ".cache" / "stripe-openapi"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "mountaineer_billing" / "stripe"
+TYPE_HELPERS_SOURCE_PATH = REPO_ROOT / "mountaineer_billing" / "type_helpers.py"
 PATH_PRIORITY = {
     "latest/openapi.spec3.json": 0,
     "preview/openapi.spec3.json": 1,
@@ -559,6 +560,30 @@ def _resolve_type_import(
     )
 
 
+def _can_import_global_type_helpers(output_dir: Path) -> bool:
+    package_root = output_dir.parent
+    return (
+        (package_root / "__init__.py").exists()
+        and (package_root / "type_helpers.py").exists()
+    )
+
+
+def _render_type_helpers_import(output_dir: Path) -> str:
+    if _can_import_global_type_helpers(output_dir):
+        return "from ..type_helpers import LazyAdapter, make_lazy_payload_type"
+    return "from ._type_helpers import LazyAdapter, make_lazy_payload_type"
+
+
+def _ensure_types_helper_module(output_dir: Path) -> None:
+    helper_output_path = output_dir / "_type_helpers.py"
+    if _can_import_global_type_helpers(output_dir):
+        if helper_output_path.exists():
+            helper_output_path.unlink()
+        return
+
+    helper_output_path.write_text(TYPE_HELPERS_SOURCE_PATH.read_text())
+
+
 def _render_types_module(
     *,
     output_dir: Path,
@@ -612,129 +637,15 @@ def _render_types_module(
         "# ruff: noqa: I001",
         "from __future__ import annotations",
         "",
-        "from collections.abc import Mapping",
-        "from importlib import import_module",
-        "from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeAlias, TypeVar, cast",
+        "from typing import TYPE_CHECKING, Any, TypeAlias",
         "",
-        "from pydantic import BaseModel",
-        "from pydantic_core import core_schema",
+        _render_type_helpers_import(output_dir),
         "",
         f'VERSION_DISCRIMINATOR_FIELD = "{VERSION_DISCRIMINATOR_FIELD}"',
         "",
-        "ValidatedStripeModel = TypeVar(\"ValidatedStripeModel\")",
-        "",
         *runtime_registry_lines,
         "",
-        "class LazyStripeAdapter(Generic[ValidatedStripeModel]):",
-        "    def __init__(self, object_type: str):",
-        "        self.object_type = object_type",
-        "        self._registry = _MODEL_REGISTRY[object_type]",
-        "        self._model_cache: dict[str, type[BaseModel]] = {}",
-        "",
-        "    def validate_python(self, value: Any) -> ValidatedStripeModel:",
-        "        if isinstance(value, BaseModel):",
-        "            if self._is_registered_model_instance(value):",
-        "                return cast(ValidatedStripeModel, value)",
-        "            value = value.model_dump(mode=\"python\")",
-        "",
-        "        if not isinstance(value, Mapping):",
-        "            raise TypeError(",
-        "                f\"Expected a mapping or BaseModel for {self.object_type!r}, got {type(value).__name__}\"",
-        "            )",
-        "",
-        "        api_version = value.get(VERSION_DISCRIMINATOR_FIELD)",
-        "        if not isinstance(api_version, str):",
-        "            raise ValueError(",
-        "                f\"Stripe payload is missing a string {VERSION_DISCRIMINATOR_FIELD!r} discriminator\"",
-        "            )",
-        "",
-        "        if VERSION_DISCRIMINATOR_FIELD in value:",
-        "            value = {",
-        "                key: nested_value",
-        "                for key, nested_value in value.items()",
-        "                if key != VERSION_DISCRIMINATOR_FIELD",
-        "            }",
-        "",
-        "        model_type = self._load_model(api_version)",
-        "        return cast(ValidatedStripeModel, model_type.model_validate(value))",
-        "",
-        "    def _load_model(self, api_version: str) -> type[BaseModel]:",
-        "        try:",
-        "            return self._model_cache[api_version]",
-        "        except KeyError:",
-        "            pass",
-        "",
-        "        try:",
-        "            module_path, symbol_name = self._registry[api_version]",
-        "        except KeyError as exc:",
-        "            raise ValueError(",
-        "                f\"Unsupported Stripe API version {api_version!r} for {self.object_type!r}\"",
-        "            ) from exc",
-        "",
-        "        module = import_module(module_path, package=__package__)",
-        "        model_type = cast(type[BaseModel], getattr(module, symbol_name))",
-        "        self._model_cache[api_version] = model_type",
-        "        return model_type",
-        "",
-        "    def _fully_qualified_module_path(self, module_path: str) -> str:",
-        "        if module_path.startswith('.'):",
-        "            return f\"{__package__}{module_path}\"",
-        "        return module_path",
-        "",
-        "    def _is_registered_model_instance(self, value: BaseModel) -> bool:",
-        "        if any(isinstance(value, model_type) for model_type in self._model_cache.values()):",
-        "            return True",
-        "",
-        "        value_module = value.__class__.__module__",
-        "        value_name = value.__class__.__name__",
-        "        for module_path, symbol_name in self._registry.values():",
-        "            if value_name != symbol_name:",
-        "                continue",
-        "            qualified_module = self._fully_qualified_module_path(module_path)",
-        "            if value_module in {qualified_module, f\"{qualified_module}._internal\"}:",
-        "                return True",
-        "        return False",
-        "",
-        "",
-        "def _serialize_validated_model(value: Any) -> Any:",
-        "    if isinstance(value, BaseModel):",
-        "        return value.model_dump(mode=\"json\")",
-        "    return value",
-        "",
-        "",
-        "class _LazyStripePayloadBase:",
-        "    object_type: ClassVar[str]",
-        "",
-        "    @classmethod",
-        "    def _adapter(cls) -> LazyStripeAdapter[Any]:",
-        "        return _ADAPTERS[cls.object_type]",
-        "",
-        "    @classmethod",
-        "    def __get_pydantic_core_schema__(",
-        "        cls,",
-        "        source_type: Any,",
-        "        handler: Any,",
-        "    ) -> core_schema.CoreSchema:",
-        "        return core_schema.no_info_plain_validator_function(",
-        "            cls._adapter().validate_python,",
-        "            serialization=core_schema.plain_serializer_function_ser_schema(",
-        "                _serialize_validated_model,",
-        "                return_schema=core_schema.any_schema(),",
-        "                when_used=\"always\",",
-        "            ),",
-        "        )",
-        "",
-        "    @classmethod",
-        "    def __get_pydantic_json_schema__(",
-        "        cls,",
-        "        core_schema_value: core_schema.CoreSchema,",
-        "        handler: Any,",
-        "    ) -> dict[str, Any]:",
-        "        return {",
-        "            \"type\": \"object\",",
-        "            \"title\": f\"{cls.__name__}\",",
-        "        }",
-        "",
+        "LazyStripeAdapter = LazyAdapter",
         "",
         "if TYPE_CHECKING:",
         *[f"    {line}" for line in import_lines],
@@ -755,16 +666,6 @@ def _render_types_module(
             ]
         )
 
-    runtime_payload_lines: list[str] = []
-    for object_type in object_types:
-        runtime_payload_lines.extend(
-            [
-                f"    class {TYPE_ALIAS_NAMES[object_type]}(_LazyStripePayloadBase):",
-                f'        object_type = "{object_type}"',
-                "",
-            ]
-        )
-
     lines.extend(
         [
             "    StripeObjectPayload: TypeAlias = (",
@@ -774,12 +675,16 @@ def _render_types_module(
             ),
             "    )",
             "else:",
-            *runtime_payload_lines,
             "    StripeObjectPayload = Any",
             "",
-            "_ADAPTERS: dict[str, LazyStripeAdapter[Any]] = {",
+            "_ADAPTERS: dict[str, LazyAdapter[Any]] = {",
             *[
-                f'    "{object_type}": LazyStripeAdapter("{object_type}"),'
+                "    "
+                f'"{object_type}": LazyAdapter('
+                f"registry=_MODEL_REGISTRY[{object_type!r}], "
+                f"discriminator_field=VERSION_DISCRIMINATOR_FIELD, "
+                "package=__package__, "
+                f"label={object_type!r}),"
                 for object_type in object_types
             ],
             "}",
@@ -792,7 +697,22 @@ def _render_types_module(
         adapter_name = TYPE_ADAPTER_NAMES[object_type]
         lines.extend(
             [
-                f"{adapter_name}: LazyStripeAdapter[{alias_name}] = _ADAPTERS[\"{object_type}\"]",
+                f"{adapter_name}: LazyAdapter[{alias_name}] = _ADAPTERS[\"{object_type}\"]",
+                "",
+            ]
+        )
+
+    lines.append("if not TYPE_CHECKING:")
+    for object_type in object_types:
+        alias_name = TYPE_ALIAS_NAMES[object_type]
+        adapter_name = TYPE_ADAPTER_NAMES[object_type]
+        lines.extend(
+            [
+                f"    {alias_name} = make_lazy_payload_type(",
+                f'        "{alias_name}",',
+                f"        {adapter_name},",
+                "        module_name=__name__,",
+                "    )",
                 "",
             ]
         )
@@ -801,6 +721,7 @@ def _render_types_module(
         TYPE_ALIAS_NAMES["event"],
         *[TYPE_ALIAS_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
         "StripeObjectPayload",
+        "LazyAdapter",
         "LazyStripeAdapter",
         TYPE_ADAPTER_NAMES["event"],
         *[TYPE_ADAPTER_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
@@ -960,6 +881,54 @@ def _ensure_typing_import(source: str, import_name: str) -> str:
     return f"from typing import {import_name}\n" + source
 
 
+def _resolve_package_model_target(
+    *,
+    package_dir: Path,
+    object_type: str,
+) -> tuple[Path, str]:
+    for import_path, symbol_name in TYPE_IMPORT_CANDIDATES[object_type]:
+        module_path = _module_file_for_import(package_dir, import_path)
+        if _module_contains_symbol(module_path, symbol_name):
+            return module_path, symbol_name
+
+    raise RuntimeError(
+        f"Could not resolve generated Stripe type import for {object_type!r}"
+    )
+
+
+def _inject_root_model_versions(
+    *,
+    package_dir: Path,
+    api_version: str,
+) -> None:
+    wrappers_by_module: dict[Path, list[str]] = {}
+    for object_type in ("event", *SUPPORTED_STRIPE_OBJECT_TYPES):
+        module_path, symbol_name = _resolve_package_model_target(
+            package_dir=package_dir,
+            object_type=object_type,
+        )
+        wrappers_by_module.setdefault(module_path, []).append(symbol_name)
+
+    for module_path, symbol_names in wrappers_by_module.items():
+        source = _ensure_typing_import(module_path.read_text(), "Literal")
+        wrapper_lines = ["", ""]
+        for symbol_name in symbol_names:
+            original_symbol_name = f"_MountaineerBillingOriginal{symbol_name}"
+            wrapper_lines.extend(
+                [
+                    f"{original_symbol_name} = {symbol_name}",
+                    "",
+                    f"class {symbol_name}({original_symbol_name}):",
+                    (
+                        f"    {VERSION_DISCRIMINATOR_FIELD}: "
+                        f"Literal[{api_version!r}] = {api_version!r}"
+                    ),
+                    "",
+                ]
+            )
+        module_path.write_text(source + "\n".join(wrapper_lines))
+
+
 def _postprocess_generated_models(models_dir: Path) -> None:
     (models_dir / "_deferred.py").write_text(DEFERRED_MODELS_MODULE)
 
@@ -1013,6 +982,10 @@ def _generate_revision_package(task: _RevisionGenerationTask) -> StripeSchemaRev
         show_progress=False,
     )
     _postprocess_generated_models(package_dir / "models")
+    _inject_root_model_versions(
+        package_dir=package_dir,
+        api_version=revision.api_version,
+    )
     return revision
 
 
@@ -1137,6 +1110,7 @@ def generate_stripe_package(
         for revision in all_revisions
         if (output_dir / revision.package_name / "models").exists()
     ]
+    _ensure_types_helper_module(output_dir)
     (output_dir / "versions.json").write_text(_render_registry(renderable_revisions))
     (output_dir / "types.py").write_text(
         _render_types_module(output_dir=output_dir, revisions=renderable_revisions)

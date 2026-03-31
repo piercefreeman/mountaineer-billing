@@ -1,16 +1,11 @@
 # ruff: noqa: I001
 from __future__ import annotations
 
-from collections.abc import Mapping
-from importlib import import_module
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeAlias
 
-from pydantic import BaseModel
-from pydantic_core import core_schema
+from ..type_helpers import LazyAdapter, make_lazy_payload_type
 
 VERSION_DISCRIMINATOR_FIELD = "mountaineer_billing_api_version"
-
-ValidatedStripeModel = TypeVar("ValidatedStripeModel")
 
 _MODEL_REGISTRY: dict[str, dict[str, tuple[str, str]]] = {
     "event": {
@@ -250,116 +245,7 @@ _MODEL_REGISTRY: dict[str, dict[str, tuple[str, str]]] = {
 }
 
 
-class LazyStripeAdapter(Generic[ValidatedStripeModel]):
-    def __init__(self, object_type: str):
-        self.object_type = object_type
-        self._registry = _MODEL_REGISTRY[object_type]
-        self._model_cache: dict[str, type[BaseModel]] = {}
-
-    def validate_python(self, value: Any) -> ValidatedStripeModel:
-        if isinstance(value, BaseModel):
-            if self._is_registered_model_instance(value):
-                return cast(ValidatedStripeModel, value)
-            value = value.model_dump(mode="python")
-
-        if not isinstance(value, Mapping):
-            raise TypeError(
-                f"Expected a mapping or BaseModel for {self.object_type!r}, got {type(value).__name__}"
-            )
-
-        api_version = value.get(VERSION_DISCRIMINATOR_FIELD)
-        if not isinstance(api_version, str):
-            raise ValueError(
-                f"Stripe payload is missing a string {VERSION_DISCRIMINATOR_FIELD!r} discriminator"
-            )
-
-        if VERSION_DISCRIMINATOR_FIELD in value:
-            value = {
-                key: nested_value
-                for key, nested_value in value.items()
-                if key != VERSION_DISCRIMINATOR_FIELD
-            }
-
-        model_type = self._load_model(api_version)
-        return cast(ValidatedStripeModel, model_type.model_validate(value))
-
-    def _load_model(self, api_version: str) -> type[BaseModel]:
-        try:
-            return self._model_cache[api_version]
-        except KeyError:
-            pass
-
-        try:
-            module_path, symbol_name = self._registry[api_version]
-        except KeyError as exc:
-            raise ValueError(
-                f"Unsupported Stripe API version {api_version!r} for {self.object_type!r}"
-            ) from exc
-
-        module = import_module(module_path, package=__package__)
-        model_type = cast(type[BaseModel], getattr(module, symbol_name))
-        self._model_cache[api_version] = model_type
-        return model_type
-
-    def _fully_qualified_module_path(self, module_path: str) -> str:
-        if module_path.startswith('.'):
-            return f"{__package__}{module_path}"
-        return module_path
-
-    def _is_registered_model_instance(self, value: BaseModel) -> bool:
-        if any(isinstance(value, model_type) for model_type in self._model_cache.values()):
-            return True
-
-        value_module = value.__class__.__module__
-        value_name = value.__class__.__name__
-        for module_path, symbol_name in self._registry.values():
-            if value_name != symbol_name:
-                continue
-            qualified_module = self._fully_qualified_module_path(module_path)
-            if value_module in {qualified_module, f"{qualified_module}._internal"}:
-                return True
-        return False
-
-
-def _serialize_validated_model(value: Any) -> Any:
-    if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
-    return value
-
-
-class _LazyStripePayloadBase:
-    object_type: ClassVar[str]
-
-    @classmethod
-    def _adapter(cls) -> LazyStripeAdapter[Any]:
-        return _ADAPTERS[cls.object_type]
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls,
-        source_type: Any,
-        handler: Any,
-    ) -> core_schema.CoreSchema:
-        return core_schema.no_info_plain_validator_function(
-            cls._adapter().validate_python,
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                _serialize_validated_model,
-                return_schema=core_schema.any_schema(),
-                when_used="always",
-            ),
-        )
-
-    @classmethod
-    def __get_pydantic_json_schema__(
-        cls,
-        core_schema_value: core_schema.CoreSchema,
-        handler: Any,
-    ) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "title": f"{cls.__name__}",
-        }
-
+LazyStripeAdapter = LazyAdapter
 
 if TYPE_CHECKING:
     from .v2023_08_16.models import ChargeModel as v2023_08_16_charge
@@ -619,64 +505,92 @@ if TYPE_CHECKING:
         StripeChargePayload | StripeCheckoutSessionPayload | StripeCustomerPayload | StripeInvoicePayload | StripePaymentIntentPayload | StripePricePayload | StripeProductPayload | StripeSubscriptionPayload
     )
 else:
-    class StripeEventPayload(_LazyStripePayloadBase):
-        object_type = "event"
-
-    class StripeChargePayload(_LazyStripePayloadBase):
-        object_type = "charge"
-
-    class StripeCheckoutSessionPayload(_LazyStripePayloadBase):
-        object_type = "checkout.session"
-
-    class StripeCustomerPayload(_LazyStripePayloadBase):
-        object_type = "customer"
-
-    class StripeInvoicePayload(_LazyStripePayloadBase):
-        object_type = "invoice"
-
-    class StripePaymentIntentPayload(_LazyStripePayloadBase):
-        object_type = "payment_intent"
-
-    class StripePricePayload(_LazyStripePayloadBase):
-        object_type = "price"
-
-    class StripeProductPayload(_LazyStripePayloadBase):
-        object_type = "product"
-
-    class StripeSubscriptionPayload(_LazyStripePayloadBase):
-        object_type = "subscription"
-
     StripeObjectPayload = Any
 
-_ADAPTERS: dict[str, LazyStripeAdapter[Any]] = {
-    "event": LazyStripeAdapter("event"),
-    "charge": LazyStripeAdapter("charge"),
-    "checkout.session": LazyStripeAdapter("checkout.session"),
-    "customer": LazyStripeAdapter("customer"),
-    "invoice": LazyStripeAdapter("invoice"),
-    "payment_intent": LazyStripeAdapter("payment_intent"),
-    "price": LazyStripeAdapter("price"),
-    "product": LazyStripeAdapter("product"),
-    "subscription": LazyStripeAdapter("subscription"),
+_ADAPTERS: dict[str, LazyAdapter[Any]] = {
+    "event": LazyAdapter(registry=_MODEL_REGISTRY['event'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='event'),
+    "charge": LazyAdapter(registry=_MODEL_REGISTRY['charge'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='charge'),
+    "checkout.session": LazyAdapter(registry=_MODEL_REGISTRY['checkout.session'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='checkout.session'),
+    "customer": LazyAdapter(registry=_MODEL_REGISTRY['customer'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='customer'),
+    "invoice": LazyAdapter(registry=_MODEL_REGISTRY['invoice'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='invoice'),
+    "payment_intent": LazyAdapter(registry=_MODEL_REGISTRY['payment_intent'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='payment_intent'),
+    "price": LazyAdapter(registry=_MODEL_REGISTRY['price'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='price'),
+    "product": LazyAdapter(registry=_MODEL_REGISTRY['product'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='product'),
+    "subscription": LazyAdapter(registry=_MODEL_REGISTRY['subscription'], discriminator_field=VERSION_DISCRIMINATOR_FIELD, package=__package__, label='subscription'),
 }
 
-StripeEventAdapter: LazyStripeAdapter[StripeEventPayload] = _ADAPTERS["event"]
+StripeEventAdapter: LazyAdapter[StripeEventPayload] = _ADAPTERS["event"]
 
-StripeChargeAdapter: LazyStripeAdapter[StripeChargePayload] = _ADAPTERS["charge"]
+StripeChargeAdapter: LazyAdapter[StripeChargePayload] = _ADAPTERS["charge"]
 
-StripeCheckoutSessionAdapter: LazyStripeAdapter[StripeCheckoutSessionPayload] = _ADAPTERS["checkout.session"]
+StripeCheckoutSessionAdapter: LazyAdapter[StripeCheckoutSessionPayload] = _ADAPTERS["checkout.session"]
 
-StripeCustomerAdapter: LazyStripeAdapter[StripeCustomerPayload] = _ADAPTERS["customer"]
+StripeCustomerAdapter: LazyAdapter[StripeCustomerPayload] = _ADAPTERS["customer"]
 
-StripeInvoiceAdapter: LazyStripeAdapter[StripeInvoicePayload] = _ADAPTERS["invoice"]
+StripeInvoiceAdapter: LazyAdapter[StripeInvoicePayload] = _ADAPTERS["invoice"]
 
-StripePaymentIntentAdapter: LazyStripeAdapter[StripePaymentIntentPayload] = _ADAPTERS["payment_intent"]
+StripePaymentIntentAdapter: LazyAdapter[StripePaymentIntentPayload] = _ADAPTERS["payment_intent"]
 
-StripePriceAdapter: LazyStripeAdapter[StripePricePayload] = _ADAPTERS["price"]
+StripePriceAdapter: LazyAdapter[StripePricePayload] = _ADAPTERS["price"]
 
-StripeProductAdapter: LazyStripeAdapter[StripeProductPayload] = _ADAPTERS["product"]
+StripeProductAdapter: LazyAdapter[StripeProductPayload] = _ADAPTERS["product"]
 
-StripeSubscriptionAdapter: LazyStripeAdapter[StripeSubscriptionPayload] = _ADAPTERS["subscription"]
+StripeSubscriptionAdapter: LazyAdapter[StripeSubscriptionPayload] = _ADAPTERS["subscription"]
+
+if not TYPE_CHECKING:
+    StripeEventPayload = make_lazy_payload_type(
+        "StripeEventPayload",
+        StripeEventAdapter,
+        module_name=__name__,
+    )
+
+    StripeChargePayload = make_lazy_payload_type(
+        "StripeChargePayload",
+        StripeChargeAdapter,
+        module_name=__name__,
+    )
+
+    StripeCheckoutSessionPayload = make_lazy_payload_type(
+        "StripeCheckoutSessionPayload",
+        StripeCheckoutSessionAdapter,
+        module_name=__name__,
+    )
+
+    StripeCustomerPayload = make_lazy_payload_type(
+        "StripeCustomerPayload",
+        StripeCustomerAdapter,
+        module_name=__name__,
+    )
+
+    StripeInvoicePayload = make_lazy_payload_type(
+        "StripeInvoicePayload",
+        StripeInvoiceAdapter,
+        module_name=__name__,
+    )
+
+    StripePaymentIntentPayload = make_lazy_payload_type(
+        "StripePaymentIntentPayload",
+        StripePaymentIntentAdapter,
+        module_name=__name__,
+    )
+
+    StripePricePayload = make_lazy_payload_type(
+        "StripePricePayload",
+        StripePriceAdapter,
+        module_name=__name__,
+    )
+
+    StripeProductPayload = make_lazy_payload_type(
+        "StripeProductPayload",
+        StripeProductAdapter,
+        module_name=__name__,
+    )
+
+    StripeSubscriptionPayload = make_lazy_payload_type(
+        "StripeSubscriptionPayload",
+        StripeSubscriptionAdapter,
+        module_name=__name__,
+    )
 
 __all__ = [
     "StripeEventPayload",
@@ -689,6 +603,7 @@ __all__ = [
     "StripeProductPayload",
     "StripeSubscriptionPayload",
     "StripeObjectPayload",
+    "LazyAdapter",
     "LazyStripeAdapter",
     "StripeEventAdapter",
     "StripeChargeAdapter",
