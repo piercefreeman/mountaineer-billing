@@ -3728,12 +3728,6 @@
             "description": "Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.",
             "type": "object"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "object": {
             "description": "String representing the object's type. Objects of the same type share the same value.",
             "enum": [
@@ -3994,8 +3988,7 @@
           "object",
           "paid",
           "refunded",
-          "status",
-          "mountaineer_billing_api_version"
+          "status"
         ],
         "title": "Charge",
         "type": "object",
@@ -4494,12 +4487,6 @@
             "type": "string",
             "x-stripeBypassValidation": true
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "object": {
             "description": "String representing the object's type. Objects of the same type share the same value.",
             "enum": [
@@ -4766,8 +4753,7 @@
           "object",
           "payment_method_types",
           "payment_status",
-          "shipping_options",
-          "mountaineer_billing_api_version"
+          "shipping_options"
         ],
         "title": "Session",
         "type": "object",
@@ -6316,12 +6302,6 @@
             "description": "Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.",
             "type": "object"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "name": {
             "description": "The customer's full name or business name.",
             "maxLength": 5000,
@@ -6530,8 +6510,7 @@
           "created",
           "id",
           "livemode",
-          "object",
-          "mountaineer_billing_api_version"
+          "object"
         ],
         "title": "Customer",
         "type": "object",
@@ -8801,12 +8780,6 @@
             "description": "Has the value `true` if the object exists in live mode or the value `false` if the object exists in test mode.",
             "type": "boolean"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "object": {
             "description": "String representing the object's type. Objects of the same type share the same value.",
             "enum": [
@@ -8840,8 +8813,7 @@
           "livemode",
           "object",
           "pending_webhooks",
-          "type",
-          "mountaineer_billing_api_version"
+          "type"
         ],
         "title": "NotificationEvent",
         "type": "object",
@@ -10134,12 +10106,6 @@
             "nullable": true,
             "type": "object"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "next_payment_attempt": {
             "description": "The time at which payment will next be attempted. This value will be `null` for invoices where `collection_method=send_invoice`.",
             "format": "unix-time",
@@ -10453,8 +10419,7 @@
           "status_transitions",
           "subtotal",
           "total",
-          "total_tax_amounts",
-          "mountaineer_billing_api_version"
+          "total_tax_amounts"
         ],
         "title": "Invoice",
         "type": "object",
@@ -19965,12 +19930,6 @@
             "description": "Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format. Learn more about [storing information in metadata](https://stripe.com/docs/payments/payment-intents/creating-payment-intents#storing-information-in-metadata).",
             "type": "object"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "next_action": {
             "anyOf": [
               {
@@ -20157,8 +20116,7 @@
           "livemode",
           "object",
           "payment_method_types",
-          "status",
-          "mountaineer_billing_api_version"
+          "status"
         ],
         "title": "PaymentIntent",
         "type": "object",
@@ -30710,12 +30668,6 @@
             "description": "Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.",
             "type": "object"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "nickname": {
             "description": "A brief description of the price, hidden from customers.",
             "maxLength": 5000,
@@ -30828,8 +30780,7 @@
           "metadata",
           "object",
           "product",
-          "type",
-          "mountaineer_billing_api_version"
+          "type"
         ],
         "title": "Price",
         "type": "object",
@@ -30948,12 +30899,6 @@
             "description": "Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.",
             "type": "object"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "name": {
             "description": "The product's name, meant to be displayable to the customer.",
             "maxLength": 5000,
@@ -31034,8 +30979,7 @@
           "metadata",
           "name",
           "object",
-          "updated",
-          "mountaineer_billing_api_version"
+          "updated"
         ],
         "title": "Product",
         "type": "object",
@@ -36546,12 +36490,6 @@
             "description": "Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.",
             "type": "object"
           },
-          "mountaineer_billing_api_version": {
-            "enum": [
-              "2025-02-24.acacia"
-            ],
-            "type": "string"
-          },
           "next_pending_invoice_item_invoice": {
             "description": "Specifies the approximate timestamp on which any pending invoice items will be billed according to the schedule provided at `pending_invoice_item_interval`.",
             "format": "unix-time",
@@ -36749,8 +36687,7 @@
           "metadata",
           "object",
           "start_date",
-          "status",
-          "mountaineer_billing_api_version"
+          "status"
         ],
         "title": "Subscription",
         "type": "object",

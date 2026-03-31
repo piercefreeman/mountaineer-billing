@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated
 
 from ._deferred import BaseModel, Field, RootModel
 
@@ -135,9 +135,6 @@ class Mode(StrEnum):
     payment = 'payment'
     setup = 'setup'
     subscription = 'subscription'
-
-
-MountaineerBillingApiVersion = Literal["2025-10-29.clover"]
 
 
 class Object11Model(StrEnum):
@@ -426,7 +423,6 @@ class Session(BaseModel):
         ),
     ] = None
     mode: Annotated[Mode, Field(description='The mode of the Checkout Session.')]
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     name_collection: PaymentPagesCheckoutSessionNameCollection | None = None
     object: Annotated[
         Object11Model,

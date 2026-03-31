@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import Enum, StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from ._deferred import BaseModel, Field, RootModel
 
@@ -1903,9 +1903,6 @@ class FailureBalanceTransaction(RootModel[str | None]):
             max_length=5000,
         ),
     ] = None
-
-
-MountaineerBillingApiVersion = Literal["2025-10-29.clover"]
 
 
 class Object9(StrEnum):
@@ -17306,7 +17303,6 @@ class Event(BaseModel):
             description='Has the value `true` if the object exists in live mode or the value `false` if the object exists in test mode.'
         ),
     ]
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     object: Annotated[
         Object29,
         Field(
@@ -21546,7 +21542,6 @@ class ChargeModel(BaseModel):
             description='Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.'
         ),
     ]
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     object: Annotated[
         Object9,
         Field(
@@ -21894,7 +21889,6 @@ class CustomerModel(BaseModel):
             description='Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.'
         ),
     ] = None
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     name: Annotated[
         str | None,
         Field(
@@ -22994,7 +22988,6 @@ class InvoiceModel(BaseModel):
             description='Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.'
         ),
     ] = None
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     next_payment_attempt: Annotated[
         int | None,
         Field(
@@ -24195,7 +24188,6 @@ class PaymentIntent(BaseModel):
             description='Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format. Learn more about [storing information in metadata](https://stripe.com/docs/payments/payment-intents/creating-payment-intents#storing-information-in-metadata).'
         ),
     ] = None
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     next_action: PaymentIntentNextAction | None = None
     object: Annotated[
         Object42,
@@ -25765,7 +25757,6 @@ class Price(BaseModel):
             description='Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.'
         ),
     ]
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     nickname: Annotated[
         str | None,
         Field(
@@ -25884,7 +25875,6 @@ class ProductModel(BaseModel):
             description='Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.'
         ),
     ]
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     name: Annotated[
         str,
         Field(
@@ -26820,7 +26810,6 @@ class SubscriptionModel(BaseModel):
             description='Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.'
         ),
     ]
-    mountaineer_billing_api_version: MountaineerBillingApiVersion
     next_pending_invoice_item_invoice: Annotated[
         int | None,
         Field(

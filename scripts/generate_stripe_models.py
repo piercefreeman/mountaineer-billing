@@ -120,10 +120,6 @@ MODEL_REBUILD_PATTERN = re.compile(
 )
 PYDANTIC_IMPORT_PATTERN = re.compile(r"(?m)^from pydantic import (?P<imports>.+)$")
 TYPING_IMPORT_PATTERN = re.compile(r"(?m)^from typing import (?P<imports>.+)$")
-VERSION_ENUM_PATTERN = re.compile(
-    r"(?m)^class MountaineerBillingApiVersion\(StrEnum\):\n"
-    r"(?P<body>(?:    [^\n]+\n)+)"
-)
 DEFERRED_MODELS_MODULE = """from __future__ import annotations
 
 from typing import Generic, TypeVar
@@ -461,43 +457,6 @@ def _render_package_root_init() -> str:
     )
 
 
-def _inject_version_discriminator(
-    schema: dict[str, Any],
-    *,
-    api_version: str,
-) -> dict[str, Any]:
-    components = schema.get("components")
-    if not isinstance(components, dict):
-        raise RuntimeError("Stripe OpenAPI schema is missing components")
-
-    schema_components = components.get("schemas")
-    if not isinstance(schema_components, dict):
-        raise RuntimeError("Stripe OpenAPI schema is missing components.schemas")
-
-    for object_type, schema_key in SCHEMA_KEYS_BY_OBJECT_TYPE.items():
-        component = schema_components.get(schema_key)
-        if not isinstance(component, dict):
-            raise RuntimeError(
-                f"Stripe OpenAPI schema is missing {schema_key!r} for {object_type!r}"
-            )
-        if component.get("type") != "object":
-            raise RuntimeError(
-                f"Stripe OpenAPI schema component {schema_key!r} is not an object"
-            )
-
-        properties = component.setdefault("properties", {})
-        properties[VERSION_DISCRIMINATOR_FIELD] = {
-            "type": "string",
-            "enum": [api_version],
-        }
-
-        required = component.setdefault("required", [])
-        if VERSION_DISCRIMINATOR_FIELD not in required:
-            required.append(VERSION_DISCRIMINATOR_FIELD)
-
-    return schema
-
-
 def _iter_schema_refs(value: Any):
     if isinstance(value, dict):
         ref = value.get("$ref")
@@ -674,11 +633,8 @@ def _render_types_module(
         "",
         "    def validate_python(self, value: Any) -> ValidatedStripeModel:",
         "        if isinstance(value, BaseModel):",
-        "            api_version = getattr(value, VERSION_DISCRIMINATOR_FIELD, None)",
-        "            if isinstance(api_version, str) and api_version in self._registry:",
-        "                model_type = self._load_model(api_version)",
-        "                if isinstance(value, model_type):",
-        "                    return cast(ValidatedStripeModel, value)",
+        "            if self._is_registered_model_instance(value):",
+        "                return cast(ValidatedStripeModel, value)",
         "            value = value.model_dump(mode=\"python\")",
         "",
         "        if not isinstance(value, Mapping):",
@@ -691,6 +647,13 @@ def _render_types_module(
         "            raise ValueError(",
         "                f\"Stripe payload is missing a string {VERSION_DISCRIMINATOR_FIELD!r} discriminator\"",
         "            )",
+        "",
+        "        if VERSION_DISCRIMINATOR_FIELD in value:",
+        "            value = {",
+        "                key: nested_value",
+        "                for key, nested_value in value.items()",
+        "                if key != VERSION_DISCRIMINATOR_FIELD",
+        "            }",
         "",
         "        model_type = self._load_model(api_version)",
         "        return cast(ValidatedStripeModel, model_type.model_validate(value))",
@@ -712,6 +675,25 @@ def _render_types_module(
         "        model_type = cast(type[BaseModel], getattr(module, symbol_name))",
         "        self._model_cache[api_version] = model_type",
         "        return model_type",
+        "",
+        "    def _fully_qualified_module_path(self, module_path: str) -> str:",
+        "        if module_path.startswith('.'):",
+        "            return f\"{__package__}{module_path}\"",
+        "        return module_path",
+        "",
+        "    def _is_registered_model_instance(self, value: BaseModel) -> bool:",
+        "        if any(isinstance(value, model_type) for model_type in self._model_cache.values()):",
+        "            return True",
+        "",
+        "        value_module = value.__class__.__module__",
+        "        value_name = value.__class__.__name__",
+        "        for module_path, symbol_name in self._registry.values():",
+        "            if value_name != symbol_name:",
+        "                continue",
+        "            qualified_module = self._fully_qualified_module_path(module_path)",
+        "            if value_module in {qualified_module, f\"{qualified_module}._internal\"}:",
+        "                return True",
+        "        return False",
         "",
         "",
         "def _serialize_validated_model(value: Any) -> Any:",
@@ -868,10 +850,7 @@ def _prepare_output_dir(
 
 def _load_schema(repo_dir: Path, revision: StripeSchemaRevision) -> dict[str, Any]:
     raw_schema = _git_output(repo_dir, "show", f"{revision.commit_sha}:{revision.schema_path}")
-    schema = _inject_version_discriminator(
-        json.loads(raw_schema),
-        api_version=revision.api_version,
-    )
+    schema = json.loads(raw_schema)
     return _prune_schema_for_codegen(schema)
 
 
@@ -981,24 +960,6 @@ def _ensure_typing_import(source: str, import_name: str) -> str:
     return f"from typing import {import_name}\n" + source
 
 
-def _rewrite_version_discriminator_enum(source: str) -> str:
-    match = VERSION_ENUM_PATTERN.search(source)
-    if not match:
-        return source
-
-    enum_value_match = re.search(
-        r"=\s*(?P<quote>['\"])(?P<value>.+?)(?P=quote)",
-        match.group("body"),
-    )
-    if not enum_value_match:
-        return source
-
-    source = _ensure_typing_import(source, "Literal")
-    literal_value = enum_value_match.group("value")
-    replacement = f'MountaineerBillingApiVersion = Literal["{literal_value}"]\n'
-    return VERSION_ENUM_PATTERN.sub(replacement, source, count=1)
-
-
 def _postprocess_generated_models(models_dir: Path) -> None:
     (models_dir / "_deferred.py").write_text(DEFERRED_MODELS_MODULE)
 
@@ -1008,7 +969,6 @@ def _postprocess_generated_models(models_dir: Path) -> None:
 
         original_source = generated_file.read_text()
         rewritten_source = MODEL_REBUILD_PATTERN.sub("", original_source)
-        rewritten_source = _rewrite_version_discriminator_enum(rewritten_source)
         rewritten_source = _rewrite_pydantic_imports(
             rewritten_source,
             models_dir=models_dir,
