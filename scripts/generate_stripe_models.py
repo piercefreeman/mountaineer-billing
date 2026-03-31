@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import re
 import shlex
 import shutil
@@ -169,6 +170,14 @@ class StripeTypeImport:
     import_path: str
     symbol_name: str
     alias_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class _RevisionGenerationTask:
+    repo_dir: Path
+    output_dir: Path
+    revision: StripeSchemaRevision
+    codegen_command: tuple[str, ...]
 
 
 def _run_command(
@@ -620,51 +629,197 @@ def _render_types_module(
         )
     ]
 
+    object_types = ("event", *SUPPORTED_STRIPE_OBJECT_TYPES)
+    runtime_registry_lines = [
+        "_MODEL_REGISTRY: dict[str, dict[str, tuple[str, str]]] = {",
+    ]
+    for object_type in object_types:
+        runtime_registry_lines.extend(
+            [
+                f'    "{object_type}": {{',
+                *[
+                    (
+                        f'        "{type_import.api_version}": '
+                        f'("{type_import.import_path}", "{type_import.symbol_name}"),'
+                    )
+                    for type_import in imports_by_object_type[object_type]
+                ],
+                "    },",
+            ]
+        )
+    runtime_registry_lines.extend(["}", ""])
+
     lines = [
         "# ruff: noqa: I001",
         "from __future__ import annotations",
         "",
-        "from typing import Annotated, TypeAlias",
+        "from collections.abc import Mapping",
+        "from importlib import import_module",
+        "from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeAlias, TypeVar, cast",
         "",
-        "from pydantic import Field, TypeAdapter",
+        "from pydantic import BaseModel",
+        "from pydantic_core import core_schema",
         "",
-        *import_lines,
+        f'VERSION_DISCRIMINATOR_FIELD = "{VERSION_DISCRIMINATOR_FIELD}"',
+        "",
+        "ValidatedStripeModel = TypeVar(\"ValidatedStripeModel\")",
+        "",
+        *runtime_registry_lines,
+        "",
+        "class LazyStripeAdapter(Generic[ValidatedStripeModel]):",
+        "    def __init__(self, object_type: str):",
+        "        self.object_type = object_type",
+        "        self._registry = _MODEL_REGISTRY[object_type]",
+        "        self._model_cache: dict[str, type[BaseModel]] = {}",
+        "",
+        "    def validate_python(self, value: Any) -> ValidatedStripeModel:",
+        "        if isinstance(value, BaseModel):",
+        "            api_version = getattr(value, VERSION_DISCRIMINATOR_FIELD, None)",
+        "            if isinstance(api_version, str) and api_version in self._registry:",
+        "                model_type = self._load_model(api_version)",
+        "                if isinstance(value, model_type):",
+        "                    return cast(ValidatedStripeModel, value)",
+        "            value = value.model_dump(mode=\"python\")",
+        "",
+        "        if not isinstance(value, Mapping):",
+        "            raise TypeError(",
+        "                f\"Expected a mapping or BaseModel for {self.object_type!r}, got {type(value).__name__}\"",
+        "            )",
+        "",
+        "        api_version = value.get(VERSION_DISCRIMINATOR_FIELD)",
+        "        if not isinstance(api_version, str):",
+        "            raise ValueError(",
+        "                f\"Stripe payload is missing a string {VERSION_DISCRIMINATOR_FIELD!r} discriminator\"",
+        "            )",
+        "",
+        "        model_type = self._load_model(api_version)",
+        "        return cast(ValidatedStripeModel, model_type.model_validate(value))",
+        "",
+        "    def _load_model(self, api_version: str) -> type[BaseModel]:",
+        "        try:",
+        "            return self._model_cache[api_version]",
+        "        except KeyError:",
+        "            pass",
+        "",
+        "        try:",
+        "            module_path, symbol_name = self._registry[api_version]",
+        "        except KeyError as exc:",
+        "            raise ValueError(",
+        "                f\"Unsupported Stripe API version {api_version!r} for {self.object_type!r}\"",
+        "            ) from exc",
+        "",
+        "        module = import_module(module_path, package=__package__)",
+        "        model_type = cast(type[BaseModel], getattr(module, symbol_name))",
+        "        self._model_cache[api_version] = model_type",
+        "        return model_type",
+        "",
+        "",
+        "def _serialize_validated_model(value: Any) -> Any:",
+        "    if isinstance(value, BaseModel):",
+        "        return value.model_dump(mode=\"json\")",
+        "    return value",
+        "",
+        "",
+        "class _LazyStripePayloadBase:",
+        "    object_type: ClassVar[str]",
+        "",
+        "    @classmethod",
+        "    def _adapter(cls) -> LazyStripeAdapter[Any]:",
+        "        return _ADAPTERS[cls.object_type]",
+        "",
+        "    @classmethod",
+        "    def __get_pydantic_core_schema__(",
+        "        cls,",
+        "        source_type: Any,",
+        "        handler: Any,",
+        "    ) -> core_schema.CoreSchema:",
+        "        return core_schema.no_info_plain_validator_function(",
+        "            cls._adapter().validate_python,",
+        "            serialization=core_schema.plain_serializer_function_ser_schema(",
+        "                _serialize_validated_model,",
+        "                return_schema=core_schema.any_schema(),",
+        "                when_used=\"always\",",
+        "            ),",
+        "        )",
+        "",
+        "    @classmethod",
+        "    def __get_pydantic_json_schema__(",
+        "        cls,",
+        "        core_schema_value: core_schema.CoreSchema,",
+        "        handler: Any,",
+        "    ) -> dict[str, Any]:",
+        "        return {",
+        "            \"type\": \"object\",",
+        "            \"title\": f\"{cls.__name__}\",",
+        "        }",
+        "",
+        "",
+        "if TYPE_CHECKING:",
+        *[f"    {line}" for line in import_lines],
         "",
     ]
 
-    for object_type in ("event", *SUPPORTED_STRIPE_OBJECT_TYPES):
+    for object_type in object_types:
         alias_name = TYPE_ALIAS_NAMES[object_type]
         type_imports = imports_by_object_type[object_type]
         lines.extend(
             [
-                f"{alias_name}: TypeAlias = Annotated[",
-                "    " + " | ".join(
+                f"    {alias_name}: TypeAlias = (",
+                "        " + " | ".join(
                     type_import.alias_name for type_import in type_imports
-                )
-                + ",",
-                f'    Field(discriminator="{VERSION_DISCRIMINATOR_FIELD}"),',
-                "]",
-                f"{TYPE_ADAPTER_NAMES[object_type]} = TypeAdapter({alias_name})",
+                ),
+                "    )",
+                "",
+            ]
+        )
+
+    runtime_payload_lines: list[str] = []
+    for object_type in object_types:
+        runtime_payload_lines.extend(
+            [
+                f"    class {TYPE_ALIAS_NAMES[object_type]}(_LazyStripePayloadBase):",
+                f'        object_type = "{object_type}"',
                 "",
             ]
         )
 
     lines.extend(
         [
-            "StripeObjectPayload: TypeAlias = (",
-            "    " + " | ".join(
+            "    StripeObjectPayload: TypeAlias = (",
+            "        " + " | ".join(
                 TYPE_ALIAS_NAMES[object_type]
                 for object_type in SUPPORTED_STRIPE_OBJECT_TYPES
             ),
-            ")",
+            "    )",
+            "else:",
+            *runtime_payload_lines,
+            "    StripeObjectPayload = Any",
+            "",
+            "_ADAPTERS: dict[str, LazyStripeAdapter[Any]] = {",
+            *[
+                f'    "{object_type}": LazyStripeAdapter("{object_type}"),'
+                for object_type in object_types
+            ],
+            "}",
             "",
         ]
     )
+
+    for object_type in object_types:
+        alias_name = TYPE_ALIAS_NAMES[object_type]
+        adapter_name = TYPE_ADAPTER_NAMES[object_type]
+        lines.extend(
+            [
+                f"{adapter_name}: LazyStripeAdapter[{alias_name}] = _ADAPTERS[\"{object_type}\"]",
+                "",
+            ]
+        )
 
     all_names = [
         TYPE_ALIAS_NAMES["event"],
         *[TYPE_ALIAS_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
         "StripeObjectPayload",
+        "LazyStripeAdapter",
         TYPE_ADAPTER_NAMES["event"],
         *[TYPE_ADAPTER_NAMES[object_type] for object_type in SUPPORTED_STRIPE_OBJECT_TYPES],
     ]
@@ -736,6 +891,7 @@ def _generate_models(
     output_dir: Path,
     codegen_command: list[str],
     api_version: str,
+    show_progress: bool = True,
 ) -> None:
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -758,7 +914,11 @@ def _generate_models(
     ]
     _run_command(
         command,
-        description=f"Running datamodel-code-generator for Stripe {api_version}",
+        description=(
+            f"Running datamodel-code-generator for Stripe {api_version}"
+            if show_progress
+            else None
+        ),
     )
 
 
@@ -859,6 +1019,43 @@ def _postprocess_generated_models(models_dir: Path) -> None:
             generated_file.write_text(rewritten_source)
 
 
+def _local_cpu_count() -> int:
+    try:
+        return max(1, multiprocessing.cpu_count())
+    except NotImplementedError:
+        return 1
+
+
+def _pool_factory(*, processes: int):
+    if sys.platform != "win32":
+        try:
+            return multiprocessing.get_context("fork").Pool(processes=processes)
+        except ValueError:
+            pass
+    return multiprocessing.Pool(processes=processes)
+
+
+def _generate_revision_package(task: _RevisionGenerationTask) -> StripeSchemaRevision:
+    revision = task.revision
+    package_dir = task.output_dir / revision.package_name
+    package_dir.mkdir(parents=True, exist_ok=True)
+
+    schema = _load_schema(task.repo_dir, revision)
+    schema_path = package_dir / "schema.json"
+    schema_path.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
+    (package_dir / "__init__.py").write_text(_render_version_package_init(revision))
+
+    _generate_models(
+        schema_path=schema_path,
+        output_dir=package_dir / "models",
+        codegen_command=list(task.codegen_command),
+        api_version=revision.api_version,
+        show_progress=False,
+    )
+    _postprocess_generated_models(package_dir / "models")
+    return revision
+
+
 def ensure_repo(
     repo_dir: Path,
     *,
@@ -932,7 +1129,16 @@ def generate_stripe_package(
         selected_package_names=selected_package_names,
     )
     (output_dir / "__init__.py").write_text(_render_package_root_init())
-    codegen_command_parts = _codegen_command_parts(codegen_command)
+    codegen_command_parts = tuple(_codegen_command_parts(codegen_command))
+    generation_tasks = [
+        _RevisionGenerationTask(
+            repo_dir=repo_dir,
+            output_dir=output_dir,
+            revision=revision,
+            codegen_command=codegen_command_parts,
+        )
+        for revision in revisions
+    ]
 
     with Progress(
         SpinnerColumn(),
@@ -946,33 +1152,25 @@ def generate_stripe_package(
             "Generating versioned Stripe packages", total=len(revisions)
         )
 
-        for index, revision in enumerate(revisions, start=1):
-            progress.update(
-                generate_task,
-                description=(
-                    f"Generating Stripe {revision.api_version} "
-                    f"({index}/{len(revisions)})"
-                ),
-            )
+        pool_size = _local_cpu_count()
+        progress.update(
+            generate_task,
+            description=(
+                f"Generating versioned Stripe packages "
+                f"({pool_size} workers, {len(revisions)} versions)"
+            ),
+        )
 
-            package_dir = output_dir / revision.package_name
-            package_dir.mkdir(parents=True, exist_ok=True)
-
-            schema = _load_schema(repo_dir, revision)
-            schema_path = package_dir / "schema.json"
-            schema_path.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
-            (package_dir / "__init__.py").write_text(
-                _render_version_package_init(revision)
-            )
-
-            _generate_models(
-                schema_path=schema_path,
-                output_dir=package_dir / "models",
-                codegen_command=codegen_command_parts,
-                api_version=revision.api_version,
-            )
-            _postprocess_generated_models(package_dir / "models")
+        if len(generation_tasks) == 1:
+            _generate_revision_package(generation_tasks[0])
             progress.advance(generate_task)
+        else:
+            with _pool_factory(processes=pool_size) as pool:
+                for _ in pool.imap_unordered(
+                    _generate_revision_package,
+                    generation_tasks,
+                ):
+                    progress.advance(generate_task)
 
     renderable_revisions = [
         revision
@@ -1030,6 +1228,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--skip-fetch",
+        "--no-fetch",
+        dest="skip_fetch",
         action="store_true",
         help="Use an existing local git checkout without cloning or fetching.",
     )

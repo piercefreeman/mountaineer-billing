@@ -223,6 +223,13 @@ def test_package_name_for_version():
     ) == ("v2026_03_04_preview_embedded_connect_beta_v2")
 
 
+def test_build_parser_accepts_no_fetch_alias():
+    parser = stripe_codegen.build_parser()
+    args = parser.parse_args(["--no-fetch"])
+
+    assert args.skip_fetch is True
+
+
 def test_collect_schema_revisions_prefers_latest_schema(tmp_path: Path):
     repo_dir = tmp_path / "stripe-openapi"
     repo_dir.mkdir()
@@ -337,11 +344,11 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
         ]["enum"]
         == ["2026-02-25.clover"]
     )
-    assert "TypeAdapter" in generated_types
-    assert (
-        f'Field(discriminator="{stripe_codegen.VERSION_DISCRIMINATOR_FIELD}")'
-        in generated_types
-    )
+    assert "LazyStripeAdapter" in generated_types
+    assert "TypeAdapter" not in generated_types
+    assert f'VERSION_DISCRIMINATOR_FIELD = "{stripe_codegen.VERSION_DISCRIMINATOR_FIELD}"' in generated_types
+    assert "if TYPE_CHECKING:" in generated_types
+    assert "_MODEL_REGISTRY" in generated_types
     assert "parse_object_payload" not in generated_types
     assert "parse_event_payload" not in generated_types
     assert "_OBJECT_MODEL_TYPES" not in generated_types
@@ -446,6 +453,66 @@ def test_generate_stripe_package_prunes_unreachable_components(tmp_path: Path):
     assert "unused_model" not in pruned_components
     assert "path_only_model" not in pruned_components
     assert pruned_schema["paths"] == {}
+
+
+def test_generate_stripe_package_uses_local_cpu_count_for_pool(
+    tmp_path: Path, monkeypatch
+):
+    repo_dir = tmp_path / "stripe-openapi"
+    repo_dir.mkdir()
+    _init_repo(repo_dir)
+
+    _write_json(
+        repo_dir / "openapi" / "spec3.json",
+        _make_schema(version="2025-01-01.acacia", title="legacy"),
+    )
+    _commit_all(repo_dir, "legacy")
+
+    _write_json(
+        repo_dir / "latest" / "openapi.spec3.json",
+        _make_schema(version="2026-02-25.clover", title="latest"),
+    )
+    _commit_all(repo_dir, "latest")
+
+    output_dir = tmp_path / "generated"
+    codegen_script = tmp_path / "fake_codegen.py"
+    _fake_codegen_script(codegen_script)
+
+    pool_processes: list[int] = []
+
+    class FakePool:
+        def __init__(self, *, processes: int):
+            pool_processes.append(processes)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def imap_unordered(self, func, iterable):
+            for item in iterable:
+                yield func(item)
+
+    monkeypatch.setattr(stripe_codegen, "_local_cpu_count", lambda: 7)
+    monkeypatch.setattr(
+        stripe_codegen,
+        "_pool_factory",
+        lambda *, processes: FakePool(processes=processes),
+    )
+
+    revisions = stripe_codegen.generate_stripe_package(
+        repo_dir=repo_dir,
+        output_dir=output_dir,
+        codegen_command=str(codegen_script),
+        fetch_repo=False,
+    )
+
+    assert [revision.package_name for revision in revisions] == [
+        "v2025_01_01_acacia",
+        "v2026_02_25_clover",
+    ]
+    assert pool_processes == [7]
 
 
 def test_generated_types_module_resolves_version_specific_models(tmp_path: Path):

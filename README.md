@@ -317,3 +317,9 @@ You can also limit generation to a single Stripe API version while testing:
 ```bash
 uv run scripts/generate_stripe_models.py --api-version 2026-03-25.dahlia
 ```
+
+If you are regenerating repeatedly against an existing local checkout, skip the `git fetch` step:
+
+```bash
+uv run scripts/generate_stripe_models.py --no-fetch
+```
