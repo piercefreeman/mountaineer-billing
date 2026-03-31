@@ -5,7 +5,15 @@ import stripe
 from iceaxe import DBConnection, select
 
 from mountaineer_billing.__tests__ import conf_models as models
-from mountaineer_billing.sync import BillingSync, RemotePrice, RemoteProduct, SyncDiff
+from mountaineer_billing.sync import (
+    INTERNAL_FREQUENCY_KEY,
+    INTERNAL_PRICE_ID_KEY,
+    INTERNAL_PRODUCT_ID_KEY,
+    BillingSync,
+    RemotePrice,
+    RemoteProduct,
+    SyncDiff,
+)
 
 
 @pytest.mark.parametrize(
@@ -192,6 +200,11 @@ async def test_calculate_sync_diff_existing_remote(
                     }
                     if price.frequency.value.lower() != "onetime"
                     else None,
+                    "metadata": {
+                        INTERNAL_PRODUCT_ID_KEY: str(product.id),
+                        INTERNAL_PRICE_ID_KEY: str(price.id),
+                        INTERNAL_FREQUENCY_KEY: price.frequency.value,
+                    },
                 },
                 key="test_stripe_key",
             )
@@ -284,6 +297,7 @@ async def test_sync_products_with_confirmation(
         unit_amount: int,
         currency: str,
         recurring: dict[str, str] | None = None,
+        metadata: dict[str, str] | None = None,
         **kwargs,
     ):
         nonlocal current_price_id
@@ -297,6 +311,8 @@ async def test_sync_products_with_confirmation(
         }
         if recurring:
             price_obj["recurring"] = recurring
+        if metadata:
+            price_obj["metadata"] = metadata
 
         return stripe.Price.construct_from(
             price_obj,

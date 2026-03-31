@@ -1,0 +1,146 @@
+[
+  {
+    "api_version": "2023-08-16",
+    "commit_sha": "72a4af383c5689b6ded338fdc36a86abfe32de67",
+    "package_name": "v2023_08_16",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2024-04-03",
+    "commit_sha": "dc9615857c32bcea36b4ed88ab1e6291a71d649a",
+    "package_name": "v2024_04_03",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2023-10-16",
+    "commit_sha": "0ba185f3d96c3fee739b01aaa46fa86245da1f0b",
+    "package_name": "v2023_10_16",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2024-04-10",
+    "commit_sha": "167690e89aae6261fdba2880be17909b8712df9b",
+    "package_name": "v2024_04_10",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2024-06-20",
+    "commit_sha": "5b109bff953a60ed3e50bd797dfeddb3e7dafe92",
+    "package_name": "v2024_06_20",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2024-09-30.acacia",
+    "commit_sha": "16014e560d26b8f426612bf3d2bb1de977795efd",
+    "package_name": "v2024_09_30_acacia",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2024-10-28.acacia",
+    "commit_sha": "90562cb4a4974c272f4f063c92e7f901e99c1775",
+    "package_name": "v2024_10_28_acacia",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2024-11-20.acacia",
+    "commit_sha": "7ad98dc0f5a62a726cc5cc15cd98af6ffca2ee9e",
+    "package_name": "v2024_11_20_acacia",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2024-12-18.acacia",
+    "commit_sha": "f0a1a3ef6a1f0deb7ddeb7ff8a65d36283477c5a",
+    "package_name": "v2024_12_18_acacia",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-01-27.acacia",
+    "commit_sha": "d157c2e946b078c996be4bee7411b12d45f89c19",
+    "package_name": "v2025_01_27_acacia",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-02-24.acacia",
+    "commit_sha": "5a411d0d1e527229cdb4d6633197ab8009899ce6",
+    "package_name": "v2025_02_24_acacia",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-03-31.basil",
+    "commit_sha": "072fe51d85959b0ca71c1296b32725c14a78f4a8",
+    "package_name": "v2025_03_31_basil",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-04-30.basil",
+    "commit_sha": "46e685e34c4fc7f56e8696936db2554e0c5b0fc1",
+    "package_name": "v2025_04_30_basil",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-05-28.basil",
+    "commit_sha": "6c7b45018fdeb279042e6f74c5141efe1e90b3d6",
+    "package_name": "v2025_05_28_basil",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-06-30.basil",
+    "commit_sha": "1729cb1360263b054abb3c5146548630a86fb68c",
+    "package_name": "v2025_06_30_basil",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-07-30.basil",
+    "commit_sha": "805a9b8cc62f35d2673b28c34ca5fa27d0650b8b",
+    "package_name": "v2025_07_30_basil",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-08-27.basil",
+    "commit_sha": "62fbe0713198e910b8843f70fdcd351be3ec979c",
+    "package_name": "v2025_08_27_basil",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-09-30.clover",
+    "commit_sha": "053c4b35b25fdb4b8f2afa4294a046026715f820",
+    "package_name": "v2025_09_30_clover",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-10-29.clover",
+    "commit_sha": "260f91c74e44bcd2a819bac9428f6c9e57360105",
+    "package_name": "v2025_10_29_clover",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-11-17.clover",
+    "commit_sha": "8820133ae30a4b968ea20d803c51f639ab5461c6",
+    "package_name": "v2025_11_17_clover",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2025-12-15.clover",
+    "commit_sha": "ed93b94259c55782b8b04e01f4ffdaa2872e9bcd",
+    "package_name": "v2025_12_15_clover",
+    "schema_path": "openapi/spec3.json"
+  },
+  {
+    "api_version": "2026-01-28.clover",
+    "commit_sha": "d0f9e4c144d0927877afa13586f6efc78da5b0fc",
+    "package_name": "v2026_01_28_clover",
+    "schema_path": "latest/openapi.spec3.json"
+  },
+  {
+    "api_version": "2026-02-25.clover",
+    "commit_sha": "d608561910d9b3a8c36da7bb503a51d8c201618f",
+    "package_name": "v2026_02_25_clover",
+    "schema_path": "latest/openapi.spec3.json"
+  },
+  {
+    "api_version": "2026-03-25.dahlia",
+    "commit_sha": "5146460c7a0c6dfcf9d4c92d1b0abab58719c6ff",
+    "package_name": "v2026_03_25_dahlia",
+    "schema_path": "latest/openapi.spec3.json"
+  }
+]

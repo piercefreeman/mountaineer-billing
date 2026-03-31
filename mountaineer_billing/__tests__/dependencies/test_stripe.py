@@ -12,6 +12,7 @@ from mountaineer_auth import AuthDependencies
 
 from mountaineer_billing import dependencies as BillingDependencies
 from mountaineer_billing.__tests__ import conf_models as models
+from mountaineer_billing.dependencies.stripe import INTERNAL_USER_ID_KEY
 from mountaineer_billing.enums import PriceBillingInterval, StripeStatus
 
 
@@ -65,6 +66,21 @@ async def test_checkout_builder(
             cancel_url="http://localhost:8000/cancel",
         )
         assert checkout_url == "TEST_URL"
+        mocked_customer.assert_called_once_with(
+            name="Guest Customer",
+            email=user.email,
+            metadata={INTERNAL_USER_ID_KEY: str(user.id)},
+            api_key=config.STRIPE_API_KEY,
+        )
+        mocked_session.assert_called_once()
+        session_kwargs = mocked_session.call_args.kwargs
+        assert session_kwargs["client_reference_id"] == str(user.id)
+        assert session_kwargs["metadata"] == {
+            INTERNAL_USER_ID_KEY: str(user.id)
+        }
+        assert session_kwargs["payment_intent_data"] == {
+            "metadata": {INTERNAL_USER_ID_KEY: str(user.id)}
+        }
 
 
 @pytest.mark.asyncio

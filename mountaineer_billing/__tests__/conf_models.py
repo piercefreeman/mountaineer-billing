@@ -72,6 +72,18 @@ class CheckoutSession(models.CheckoutSession):
     pass
 
 
+class StripeEvent(models.StripeEvent):
+    pass
+
+
+class StripeObject(models.StripeObject):
+    pass
+
+
+class BillingProjectionState(models.BillingProjectionState):
+    pass
+
+
 BILLING_PRODUCTS = [
     LicensedProduct(
         id=ProductID.SUBSCRIPTION_GOLD,

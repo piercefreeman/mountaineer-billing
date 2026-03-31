@@ -34,7 +34,7 @@ async def test_verify_capacity(
         is_perpetual=True,
         stripe_price_id=None,
         stripe_product_id=None,
-        subscription_id=None,
+        stripe_subscription_id=None,
         product_id=models.ProductID.ONEOFF_50_ITEMS,
         user_id=user.id,
     )

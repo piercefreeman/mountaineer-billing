@@ -7,7 +7,6 @@ from mountaineer import CoreDependencies
 
 from mountaineer_billing import daemons
 from mountaineer_billing.config import BillingConfig
-from mountaineer_billing.enums import StripeWebhookType
 from mountaineer_billing.logging import LOGGER
 
 if TYPE_CHECKING:
@@ -45,20 +44,11 @@ async def stripe_webhook(
         LOGGER.error(f"Invalid stripe webhook signature: {e}: {signature_header}")
         raise e
 
-    # If we don't support the event, we don't need to do anything
-    allowed_events = {event.value for event in StripeWebhookType}
-    if event["type"] not in allowed_events:
-        LOGGER.debug(f"No stripe handler for: {event['type']}")
-        return dict(success=True, skipped=True)
+    await daemons.UpdateStripe().run(payload=event)
+    await daemons.ReconcileStripeObjects().run(limit=25, _blocking=False)
+    await daemons.ProjectStripeBilling().run(limit=25, _blocking=False)
 
-    # Process the stripe webhook using the billing workflow runtime
-    workflow = daemons.UpdateStripe()
-    await workflow.run(
-        type=event["type"],
-        payload=event,
-    )
-
-    return dict(success=True)
+    return dict(success=True, event_id=event["id"])
 
 
 def get_billing_router():
