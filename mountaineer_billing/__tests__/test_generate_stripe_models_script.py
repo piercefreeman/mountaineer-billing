@@ -103,6 +103,7 @@ def _fake_codegen_script(script_path: Path) -> None:
                 "schema = json.loads(input_path.read_text())",
                 "discriminator_field = 'mountaineer_billing_api_version'",
                 "version_literal = schema['components']['schemas']['event']['properties'][discriminator_field]['enum'][0]",
+                "version_enum_member = 'field_' + version_literal.replace('-', '_').replace('.', '_')",
                 "title = schema['info']['title']",
                 "version = schema['info']['version']",
                 "output_dir.mkdir(parents=True, exist_ok=True)",
@@ -116,44 +117,47 @@ def _fake_codegen_script(script_path: Path) -> None:
                 "    subscription_symbol = 'Subscription'",
                 "(output_dir / '_internal.py').write_text(",
                 "    '\\n'.join([",
+                "        'from enum import StrEnum',",
                 "        'from pydantic import BaseModel',",
-                "        'from typing import Literal',",
+                "        '',",
+                "        'class MountaineerBillingApiVersion(StrEnum):',",
+                "        f'    {version_enum_member} = {version_literal!r}',",
                 "        '',",
                 "        'class Event(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        'class ChargeModel(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        'class CustomerModel(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        'class InvoiceModel(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        'class PaymentIntent(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        f'class {price_symbol}(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        'class ProductModel(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        f'class {subscription_symbol}(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        'class Session(BaseModel):',",
                 "        '    id: str',",
-                "        f'    {discriminator_field}: Literal[{version_literal!r}]',",
+                "        f'    {discriminator_field}: MountaineerBillingApiVersion',",
                 "        '',",
                 "        'Event.model_rebuild()',",
                 "        '',",
@@ -352,9 +356,13 @@ def test_generate_stripe_package_writes_versioned_modules(tmp_path: Path):
     assert "model_rebuild()" not in (
         output_dir / "v2026_02_25_clover" / "models" / "_internal.py"
     ).read_text()
-    assert "from ._deferred import BaseModel" in (
+    latest_internal = (
         output_dir / "v2026_02_25_clover" / "models" / "_internal.py"
     ).read_text()
+    assert "from ._deferred import BaseModel" in latest_internal
+    assert 'from typing import Literal' in latest_internal
+    assert 'MountaineerBillingApiVersion = Literal["2026-02-25.clover"]' in latest_internal
+    assert "class MountaineerBillingApiVersion(StrEnum):" not in latest_internal
     assert "from ._deferred import BaseModel, Field" in (
         output_dir / "v2026_02_25_clover" / "models" / "test_helpers.py"
     ).read_text()

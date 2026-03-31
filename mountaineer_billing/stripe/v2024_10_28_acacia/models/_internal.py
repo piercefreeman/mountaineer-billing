@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import Enum, StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from ._deferred import BaseModel, Field, RootModel
 
@@ -1600,8 +1600,7 @@ class Invoice1(RootModel[str | None]):
     ] = None
 
 
-class MountaineerBillingApiVersion(StrEnum):
-    field_2024_10_28_acacia = '2024-10-28.acacia'
+MountaineerBillingApiVersion = Literal["2024-10-28.acacia"]
 
 
 class Object9(StrEnum):

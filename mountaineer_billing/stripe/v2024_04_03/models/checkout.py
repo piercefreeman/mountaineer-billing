@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from ._deferred import BaseModel, Field, RootModel
 
@@ -124,8 +124,7 @@ class Mode(StrEnum):
     subscription = 'subscription'
 
 
-class MountaineerBillingApiVersion(StrEnum):
-    field_2024_04_03 = '2024-04-03'
+MountaineerBillingApiVersion = Literal["2024-04-03"]
 
 
 class Object11Model(StrEnum):

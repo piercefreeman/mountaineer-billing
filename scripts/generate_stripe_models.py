@@ -118,6 +118,11 @@ MODEL_REBUILD_PATTERN = re.compile(
     r"(?m)^[A-Za-z_][A-Za-z0-9_]*\.model_rebuild\(\)\n?"
 )
 PYDANTIC_IMPORT_PATTERN = re.compile(r"(?m)^from pydantic import (?P<imports>.+)$")
+TYPING_IMPORT_PATTERN = re.compile(r"(?m)^from typing import (?P<imports>.+)$")
+VERSION_ENUM_PATTERN = re.compile(
+    r"(?m)^class MountaineerBillingApiVersion\(StrEnum\):\n"
+    r"(?P<body>(?:    [^\n]+\n)+)"
+)
 DEFERRED_MODELS_MODULE = """from __future__ import annotations
 
 from typing import Generic, TypeVar
@@ -795,6 +800,45 @@ def _rewrite_pydantic_imports(
     return PYDANTIC_IMPORT_PATTERN.sub(replace_import, source)
 
 
+def _ensure_typing_import(source: str, import_name: str) -> str:
+    def replace_import(match: re.Match[str]) -> str:
+        imported_names = [name.strip() for name in match.group("imports").split(",")]
+        if import_name not in imported_names:
+            imported_names.append(import_name)
+        return f"from typing import {', '.join(imported_names)}"
+
+    rewritten_source, count = TYPING_IMPORT_PATTERN.subn(replace_import, source, count=1)
+    if count:
+        return rewritten_source
+
+    future_import = "from __future__ import annotations\n"
+    if future_import in source:
+        return source.replace(
+            future_import,
+            future_import + f"\nfrom typing import {import_name}\n",
+            1,
+        )
+    return f"from typing import {import_name}\n" + source
+
+
+def _rewrite_version_discriminator_enum(source: str) -> str:
+    match = VERSION_ENUM_PATTERN.search(source)
+    if not match:
+        return source
+
+    enum_value_match = re.search(
+        r"=\s*(?P<quote>['\"])(?P<value>.+?)(?P=quote)",
+        match.group("body"),
+    )
+    if not enum_value_match:
+        return source
+
+    source = _ensure_typing_import(source, "Literal")
+    literal_value = enum_value_match.group("value")
+    replacement = f'MountaineerBillingApiVersion = Literal["{literal_value}"]\n'
+    return VERSION_ENUM_PATTERN.sub(replacement, source, count=1)
+
+
 def _postprocess_generated_models(models_dir: Path) -> None:
     (models_dir / "_deferred.py").write_text(DEFERRED_MODELS_MODULE)
 
@@ -804,6 +848,7 @@ def _postprocess_generated_models(models_dir: Path) -> None:
 
         original_source = generated_file.read_text()
         rewritten_source = MODEL_REBUILD_PATTERN.sub("", original_source)
+        rewritten_source = _rewrite_version_discriminator_enum(rewritten_source)
         rewritten_source = _rewrite_pydantic_imports(
             rewritten_source,
             models_dir=models_dir,
