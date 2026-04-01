@@ -303,8 +303,9 @@ controller.app.include_router(get_billing_router())
 ## CLI
 
 ```python
-from mountaineer_billing.sync import BillingSync
-from click import command, Option
+from click import command, option
+
+from mountaineer_billing.cli.sync_up import BillingSync
 
 @command()
 @option("--dry-run", is_flag=True, default=False)
@@ -369,10 +370,10 @@ The new sync system provides:
 
 ```bash
 # Preview changes without making them
-sync-plans --dry-run
+billing-sync up --config myapp.config:AppConfig --dry-run
 
 # Apply changes with user confirmation
-sync-plans
+billing-sync up --config myapp.config:AppConfig
 ```
 
 ### Example Output
@@ -442,6 +443,6 @@ Once you've created the webhook, you'll need to copy the signing secret and past
 In your `pyproject.toml`, you'll need to add the following:
 
 ```toml
-[tool.poetry.scripts]
-sync-plans = "myapp.cli:sync_plans"
+[project.scripts]
+billing-sync = "mountaineer_billing.cli:billing_sync"
 ```

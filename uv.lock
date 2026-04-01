@@ -1173,6 +1173,7 @@ name = "mountaineer-billing"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "grpcio" },
     { name = "iceaxe" },
     { name = "mountaineer" },
@@ -1193,6 +1194,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
     { name = "grpcio", specifier = ">=1.71.2" },
     { name = "iceaxe", specifier = ">=0.0.0,<1.0.0" },
     { name = "mountaineer" },

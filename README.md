@@ -180,52 +180,45 @@ class AppConfig(ConfigBase, AuthConfig, BillingConfig, DatabaseConfig):
     BILLING_METERED = BILLING_METERED
 ```
 
-5. Mount the webhook router and create a small CLI command to sync your local
-   plan definitions into Stripe:
+5. Mount the webhook router:
 
 ```python
-from click import command, option
-from iceaxe import DBConnection
-from iceaxe.mountaineer import DatabaseDependencies
-
-from mountaineer import Depends
-from mountaineer.dependencies import get_function_dependencies
-from mountaineer.io import async_to_sync
-
 from mountaineer_billing import get_billing_router
-from mountaineer_billing.sync import BillingSync
 
 controller.app.include_router(get_billing_router())
-
-
-@command()
-@option("--dry-run", is_flag=True, default=False)
-@async_to_sync
-async def sync_plans(dry_run: bool) -> None:
-    config = AppConfig()  # type: ignore
-
-    async def _sync(
-        db_connection: DBConnection = Depends(DatabaseDependencies.get_db_connection),
-    ) -> None:
-        await BillingSync(config=config).sync_products(
-            products=BILLING_PRODUCTS,
-            db_connection=db_connection,
-            dry_run=dry_run,
-        )
-
-    async with get_function_dependencies(callable=_sync) as deps:
-        await _sync(**deps)
 ```
 
 After that:
 
 - Include these tables in your normal Iceaxe `createdb` / migration flow.
-- Add a CLI entry point for `sync-plans` in your `pyproject.toml`.
+- Use the built-in `billing-sync` CLI.
 - In Stripe, configure a webhook for
   `/external/billing/webhooks/stripe` and set the resulting signing secret as
   `STRIPE_WEBHOOK_SECRET`.
-- Run `sync-plans --dry-run`, then `sync-plans`, to push your local catalog to
-  Stripe and store the resulting price mappings locally.
+
+Call the CLI with your application config import path:
+
+```bash
+# Preview catalog changes without writing to Stripe
+billing-sync up --config your_app.config:AppConfig --dry-run
+
+# Push local BILLING_PRODUCTS into Stripe and upsert local price mappings
+billing-sync up --config your_app.config:AppConfig
+
+# Mirror supported Stripe objects back into the local StripeObject table
+billing-sync down --config your_app.config:AppConfig
+```
+
+If you prefer not to repeat the config path each time, set
+`MOUNTAINEER_BILLING_CONFIG`:
+
+```bash
+export MOUNTAINEER_BILLING_CONFIG=your_app.config:AppConfig
+
+billing-sync up --dry-run
+billing-sync up
+billing-sync down
+```
 
 At runtime, use `BillingDependencies` in your routes and Waymark actions for
 common operations like `verify_capacity`, `record_metered_usage`,

@@ -5,7 +5,7 @@ import stripe
 from iceaxe import DBConnection, select
 
 from mountaineer_billing.__tests__ import conf_models as models
-from mountaineer_billing.sync import (
+from mountaineer_billing.cli.sync_up import (
     INTERNAL_FREQUENCY_KEY,
     INTERNAL_PRICE_ID_KEY,
     INTERNAL_PRODUCT_ID_KEY,
@@ -168,7 +168,6 @@ async def test_calculate_sync_diff_existing_remote(
     """
     Test calculating sync diff when remote products already exist.
     """
-    # Mock existing remote products
     existing_products = []
     existing_prices = []
 
@@ -186,7 +185,6 @@ async def test_calculate_sync_diff_existing_remote(
         )
         existing_products.append(remote_product)
 
-        # Create matching prices for each product
         for j, price in enumerate(product.prices):
             remote_price = stripe.Price.construct_from(
                 {
@@ -223,11 +221,9 @@ async def test_calculate_sync_diff_existing_remote(
             db_connection=db_connection,
         )
 
-    # No products should need creation or updates since they match
     assert len(sync_diff.products_to_create) == 0
     assert len(sync_diff.products_to_update) == 0
 
-    # No prices should need creation, all should be stored locally
     assert len(sync_diff.prices_to_create) == 0
     total_prices = sum(len(product.prices) for product in config.BILLING_PRODUCTS)
     assert len(sync_diff.prices_to_store_locally) == total_prices
@@ -257,12 +253,10 @@ async def test_sync_products_dry_run(
             dry_run=True,
         )
 
-    # Should calculate diffs but not make any API calls
     assert len(sync_diff.products_to_create) == len(config.BILLING_PRODUCTS)
     mock_product_create.assert_not_called()
     mock_price_create.assert_not_called()
 
-    # No products should be stored in database
     product_query = select(models.ProductPrice)
     products = await db_connection.exec(product_query)
     assert len(products) == 0
@@ -330,7 +324,7 @@ async def test_sync_products_with_confirmation(
         mock_price_create.side_effect = create_price_side_effect
         mock_product_list.return_value.auto_paging_iter.return_value = []
         mock_price_list.return_value.auto_paging_iter.return_value = []
-        mock_input.return_value = "y"  # User confirms changes
+        mock_input.return_value = "y"
 
         syncer = BillingSync(config=config)
         sync_diff = await syncer.sync_products(
@@ -338,14 +332,12 @@ async def test_sync_products_with_confirmation(
             db_connection=db_connection,
         )
 
-    # Should have created the products and prices
     assert len(sync_diff.products_to_create) == len(config.BILLING_PRODUCTS)
     assert mock_product_create.call_count == len(config.BILLING_PRODUCTS)
 
     total_prices = sum(len(product.prices) for product in config.BILLING_PRODUCTS)
     assert mock_price_create.call_count == total_prices
 
-    # We should have prices stored in the database
     product_query = select(models.ProductPrice)
     products = await db_connection.exec(product_query)
     assert len(products) == total_prices
@@ -368,7 +360,7 @@ async def test_sync_products_user_cancels(
     ):
         mock_product_list.return_value.auto_paging_iter.return_value = []
         mock_price_list.return_value.auto_paging_iter.return_value = []
-        mock_input.return_value = "n"  # User declines changes
+        mock_input.return_value = "n"
 
         syncer = BillingSync(config=config)
         sync_diff = await syncer.sync_products(
@@ -376,12 +368,10 @@ async def test_sync_products_user_cancels(
             db_connection=db_connection,
         )
 
-    # Should calculate diffs but not make any API calls
     assert len(sync_diff.products_to_create) == len(config.BILLING_PRODUCTS)
     mock_product_create.assert_not_called()
     mock_price_create.assert_not_called()
 
-    # No products should be stored in database
     product_query = select(models.ProductPrice)
     products = await db_connection.exec(product_query)
     assert len(products) == 0
@@ -397,7 +387,6 @@ async def test_store_price_mapping_avoids_duplicates(
     """
     syncer = BillingSync(config=config)
 
-    # Create a sample product and price
     product = config.BILLING_PRODUCTS[0]
     price = product.prices[0]
     remote_price = RemotePrice(
@@ -407,13 +396,9 @@ async def test_store_price_mapping_avoids_duplicates(
         currency=price.currency.lower(),
     )
 
-    # Store the mapping once
+    await syncer._store_price_mapping(product, price, remote_price, db_connection)
     await syncer._store_price_mapping(product, price, remote_price, db_connection)
 
-    # Try to store it again
-    await syncer._store_price_mapping(product, price, remote_price, db_connection)
-
-    # Should only have one entry
     product_query = select(models.ProductPrice).where(
         models.ProductPrice.product_id == product.id,
         models.ProductPrice.price_id == price.id,
@@ -434,10 +419,7 @@ async def test_sync_diff_model():
     assert len(diff.prices_to_create) == 0
     assert len(diff.prices_to_store_locally) == 0
 
-    # Test that we can add items - use a product from the billing config
-    from mountaineer_billing.__tests__.conf_models import (
-        ProductID,
-    )
+    from mountaineer_billing.__tests__.conf_models import ProductID
     from mountaineer_billing.products import LicensedProduct
 
     product = LicensedProduct(

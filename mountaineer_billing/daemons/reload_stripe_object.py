@@ -213,6 +213,12 @@ class ReloadStripeObjectResponse(BaseModel):
     stripe_customer_id: str | None = None
 
 
+class PersistedStripeObjectResponse(BaseModel):
+    stripe_object_id: str
+    object_type: str
+    stripe_customer_id: str | None = None
+
+
 @workflow
 class ReloadStripeObject(Workflow):
     """
@@ -555,7 +561,54 @@ async def _reload_stripe_object(
     config: BillingConfig,
     db_connection: DBConnection,
 ) -> ReloadStripeObjectResponse:
-    now = utcnow()
+    persisted_object = await upsert_stripe_object_snapshot(
+        object_type=object_type,
+        object_payload=object_payload,
+        livemode=request.livemode,
+        latest_event_created_at=request.latest_event_created_at,
+        config=config,
+        db_connection=db_connection,
+    )
+
+    return ReloadStripeObjectResponse(
+        event_id=request.event_id,
+        stripe_event_id=request.stripe_event_id,
+        stripe_object_id=persisted_object.stripe_object_id,
+        object_type=persisted_object.object_type,
+        stripe_customer_id=persisted_object.stripe_customer_id,
+    )
+
+
+def stripe_object_update_fields(
+    config: BillingConfig,
+    *,
+    include_latest_event_created_at: bool = True,
+) -> tuple[Any, ...]:
+    field_names = STRIPE_OBJECT_UPDATE_FIELD_NAMES
+    if not include_latest_event_created_at:
+        field_names = tuple(
+            field_name
+            for field_name in STRIPE_OBJECT_UPDATE_FIELD_NAMES
+            if field_name != "latest_event_created_at"
+        )
+
+    return tuple(
+        getattr(config.BILLING_STRIPE_OBJECT, field_name) for field_name in field_names
+    )
+
+
+async def upsert_stripe_object_snapshot(
+    *,
+    object_type: str,
+    object_payload: BaseModel,
+    livemode: bool,
+    latest_event_created_at: datetime | None,
+    config: BillingConfig,
+    db_connection: DBConnection,
+    include_latest_event_created_at: bool = True,
+    synced_at: datetime | None = None,
+) -> PersistedStripeObjectResponse:
+    now = synced_at or utcnow()
     payload_data = object_payload.model_dump(mode="json")
     stripe_id = payload_data.get("id")
     if not isinstance(stripe_id, str):
@@ -611,7 +664,7 @@ async def _reload_stripe_object(
     stripe_object = config.BILLING_STRIPE_OBJECT(
         stripe_id=stripe_id,
         object_type=object_type,
-        livemode=bool(payload_data.get("livemode", request.livemode)),
+        livemode=bool(payload_data.get("livemode", livemode)),
         api_version=api_version,
         generic_payload=None,
         charge=charge_payload,
@@ -626,7 +679,7 @@ async def _reload_stripe_object(
         internal_user_id=extract_internal_user_id(payload_data),
         sync_status=SyncStatus.CLEAN,
         dirty_since=None,
-        latest_event_created_at=request.latest_event_created_at,
+        latest_event_created_at=latest_event_created_at,
         last_reconciled_at=now,
         next_reconcile_at=None,
         locked_at=None,
@@ -642,15 +695,13 @@ async def _reload_stripe_object(
             config.BILLING_STRIPE_OBJECT.stripe_id,
             config.BILLING_STRIPE_OBJECT.livemode,
         ),
-        update_fields=tuple(
-            getattr(config.BILLING_STRIPE_OBJECT, field_name)
-            for field_name in STRIPE_OBJECT_UPDATE_FIELD_NAMES
+        update_fields=stripe_object_update_fields(
+            config,
+            include_latest_event_created_at=include_latest_event_created_at,
         ),
     )
 
-    return ReloadStripeObjectResponse(
-        event_id=request.event_id,
-        stripe_event_id=request.stripe_event_id,
+    return PersistedStripeObjectResponse(
         stripe_object_id=stripe_id,
         object_type=object_type,
         stripe_customer_id=stripe_customer_id,
@@ -662,4 +713,7 @@ __all__ = [
     "ReloadStripeObjectPayload",
     "ReloadStripeObjectRequest",
     "ReloadStripeObjectResponse",
+    "PersistedStripeObjectResponse",
+    "stripe_object_update_fields",
+    "upsert_stripe_object_snapshot",
 ]
