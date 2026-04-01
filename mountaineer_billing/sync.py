@@ -1,9 +1,9 @@
 from collections import defaultdict
-from typing import Literal, Sequence
+from typing import Literal, Protocol, Sequence, runtime_checkable
 
 import stripe
 from iceaxe import DBConnection, select
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from mountaineer.logging import LOGGER
 
@@ -19,6 +19,29 @@ INTERNAL_ID_KEY = "internal_id"
 INTERNAL_PRODUCT_ID_KEY = "internal_product_id"
 INTERNAL_PRICE_ID_KEY = "internal_price_id"
 INTERNAL_FREQUENCY_KEY = "internal_frequency"
+
+
+@runtime_checkable
+class SupportsToDict(Protocol):
+    def to_dict(self, recursive: bool = False) -> object: ...
+
+
+@runtime_checkable
+class SupportsToDictRecursive(Protocol):
+    def to_dict_recursive(self) -> object: ...
+
+
+def stripe_resource_to_dict(value: object) -> object:
+    if isinstance(value, dict):
+        return value
+
+    if isinstance(value, SupportsToDict):
+        return value.to_dict(recursive=True)
+
+    if isinstance(value, SupportsToDictRecursive):
+        return value.to_dict_recursive()
+
+    return value
 
 
 class MarketingFeature(BaseModel):
@@ -40,6 +63,11 @@ class RemoteProduct(BaseModel):
     model_config = {
         "frozen": True,
     }
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_stripe_product(cls, value: object) -> object:
+        return stripe_resource_to_dict(value)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RemoteProduct):
@@ -72,6 +100,11 @@ class RemotePrice(BaseModel):
     model_config = {
         "frozen": True,
     }
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_stripe_price(cls, value: object) -> object:
+        return stripe_resource_to_dict(value)
 
     @field_validator("currency")
     def requires_lowercase_currency(cls, value: str) -> str:

@@ -70,3 +70,4 @@ select = ["E4", "E7", "E9", "F", "I001", "T201"]
 
 [tool.pytest.ini_options]
 testpaths = ["mountaineer_billing/__tests__"]
+asyncio_default_fixture_loop_scope = "function"

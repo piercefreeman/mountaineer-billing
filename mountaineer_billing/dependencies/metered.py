@@ -129,7 +129,7 @@ def record_metered_usage(
 
                 yield True
                 await tx.commit()
-            except Exception:
+            except BaseException:
                 # Rollback our initial increase
                 await tx.rollback()
 

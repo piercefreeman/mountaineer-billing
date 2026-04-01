@@ -1,6 +1,5 @@
 from mountaineer_billing import dependencies as BillingDependencies  # noqa: F401
 from mountaineer_billing.config import BillingConfig as BillingConfig
-from mountaineer_billing.controllers import get_billing_router as get_billing_router
 from mountaineer_billing.enums import (
     PriceBillingInterval as PriceBillingInterval,
     StripeStatus as StripeStatus,
