@@ -193,7 +193,7 @@ stripe-sync materialize
 
 For a simple headful checkout walkthrough, the repo now includes an
 `integration-runner` CLI. It boots a small Mountaineer-backed demo config,
-creates the local billing tables if needed, syncs the demo catalog to Stripe
+resets and recreates the local billing schema, syncs the demo catalog to Stripe
 test mode, opens a fresh Stripe Checkout session through `mountaineer-billing`,
 fills a test card in headful Chromium, and records a video of the run.
 
@@ -220,7 +220,8 @@ uv run --project integration-runner integration-runner
 The runner config lives in `integration-runner/integration_runner/config.py`.
 `STRIPE_API_KEY` must start with `sk_test_`; live keys are rejected at config
 validation time. By default the runner uses the PostgreSQL settings exposed by
-`integration-runner/docker-compose.yml`, creates or reuses
+`integration-runner/docker-compose.yml`, clears the public schema on startup,
+creates or reuses
 `checkout-runner@example.com`, syncs the demo products to Stripe, types
 Stripe's standard `4242` test card, and saves video output under
 `artifacts/integration-runner/videos`. If you want to change the product, URLs,

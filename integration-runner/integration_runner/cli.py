@@ -68,6 +68,43 @@ async def _ensure_local_schema(
     await create_all(db_connection, models=RUNNER_TABLE_MODELS)
 
 
+async def _reset_local_schema(
+    db_connection: DBConnection,
+) -> None:
+    await db_connection.conn.execute(
+        """
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """
+    )
+
+    await db_connection.conn.execute(
+        """
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT typname
+                FROM pg_type
+                WHERE typtype = 'e'
+                AND typnamespace = (
+                    SELECT oid
+                    FROM pg_namespace
+                    WHERE nspname = 'public'
+                )
+            ) LOOP
+                EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(r.typname) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """
+    )
+
+
 class AutoApproveBillingSync(BillingSync):
     async def _confirm_changes(self, sync_diff) -> bool:  # type: ignore[override]
         return True
@@ -158,6 +195,7 @@ async def main() -> None:
     resolved_video_dir = Path(config.INTEGRATION_RUNNER_VIDEO_DIR).resolve()
 
     async def handler(db_connection: DBConnection) -> IntegrationRunSummary:
+        await _reset_local_schema(db_connection)
         await _ensure_local_schema(db_connection)
         await _sync_products_to_test_stripe(
             config=config,

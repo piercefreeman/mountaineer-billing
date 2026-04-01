@@ -14,7 +14,7 @@ uv run --project integration-runner integration-runner
 ```
 
 The runner uses `IntegrationRunnerConfig` from `integration_runner/config.py`,
-auto-creates the local schema, auto-syncs the demo catalog to Stripe test mode,
-and records a video while stepping through checkout in headful Chromium. The
-bundled `docker-compose.yml` exposes Postgres on `localhost:5436`, which matches
-the runner's default `POSTGRES_*` settings.
+resets and recreates the public schema on startup, auto-syncs the demo catalog
+to Stripe test mode, and records a video while stepping through checkout in
+headful Chromium. The bundled `docker-compose.yml` exposes Postgres on
+`localhost:5436`, which matches the runner's default `POSTGRES_*` settings.

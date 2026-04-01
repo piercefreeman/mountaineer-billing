@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from click.testing import CliRunner
+from iceaxe.base import DBModelMetaclass
 
 from mountaineer.config import unregister_config
 
@@ -24,6 +25,16 @@ def clear_registered_config() -> None:
     try:
         yield
     finally:
+        DBModelMetaclass._registry = [
+            model
+            for model in DBModelMetaclass._registry
+            if not getattr(model, "__module__", "").startswith("integration_runner.")
+        ]
+        DBModelMetaclass._cached_args = {
+            model: args
+            for model, args in DBModelMetaclass._cached_args.items()
+            if not getattr(model, "__module__", "").startswith("integration_runner.")
+        }
         unregister_config()
 
 
@@ -70,6 +81,10 @@ def test_integration_runner_command_creates_checkout_and_reports_video_path(
             new=AsyncMock(side_effect=mock_run_with_db_connection),
         ) as mock_run_with_db_connection,
         patch(
+            "integration_runner.cli._reset_local_schema",
+            new=AsyncMock(return_value=None),
+        ) as mock_reset_local_schema,
+        patch(
             "integration_runner.cli._ensure_local_schema",
             new=AsyncMock(return_value=None),
         ) as mock_ensure_local_schema,
@@ -100,6 +115,7 @@ def test_integration_runner_command_creates_checkout_and_reports_video_path(
     assert result.exit_code == 0
     mock_get_runner_config.assert_called_once_with()
     mock_run_with_db_connection.assert_awaited_once()
+    mock_reset_local_schema.assert_awaited_once_with(fake_db_connection)
     mock_ensure_local_schema.assert_awaited_once_with(fake_db_connection)
     mock_sync_products.assert_awaited_once_with(
         config=runner_config,
@@ -144,3 +160,23 @@ def test_integration_runner_config_requires_test_stripe_key() -> None:
 
     with pytest.raises(ValueError, match="sk_test_"):
         IntegrationRunnerConfig(STRIPE_API_KEY="sk_live_123")
+
+
+@pytest.mark.asyncio
+async def test_reset_local_schema_drops_tables_and_enum_types() -> None:
+    reset_local_schema = importlib.import_module(
+        "integration_runner.cli"
+    )._reset_local_schema
+
+    execute = AsyncMock()
+    fake_db_connection = SimpleNamespace(conn=SimpleNamespace(execute=execute))
+
+    await reset_local_schema(fake_db_connection)
+
+    assert execute.await_count == 2
+    table_reset_sql = execute.await_args_list[0].args[0]
+    type_reset_sql = execute.await_args_list[1].args[0]
+    assert "DROP TABLE IF EXISTS" in table_reset_sql
+    assert "schemaname = 'public'" in table_reset_sql
+    assert "DROP TYPE IF EXISTS" in type_reset_sql
+    assert "typtype = 'e'" in type_reset_sql
