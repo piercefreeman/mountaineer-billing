@@ -284,8 +284,9 @@ async def load_materialization_context(
 ) -> LoadMaterializationContextResponse:
     """Load the clean Stripe mirror rows needed for one-customer projection."""
 
-    stripe_object_query = select(config.BILLING_STRIPE_OBJECT).where(
-        config.BILLING_STRIPE_OBJECT.stripe_customer_id == request.stripe_customer_id
+    stripe_object_query = select(config.BILLING_MODELS.STRIPE_OBJECT).where(
+        config.BILLING_MODELS.STRIPE_OBJECT.stripe_customer_id
+        == request.stripe_customer_id
     )
     stripe_objects = await db_connection.exec(stripe_object_query)
 
@@ -303,8 +304,9 @@ async def load_materialization_context(
             f"for customer {request.stripe_customer_id}: {blocking_ids}"
         )
 
-    projection_state_query = select(config.BILLING_PROJECTION_STATE).where(
-        config.BILLING_PROJECTION_STATE.stripe_customer_id == request.stripe_customer_id
+    projection_state_query = select(config.BILLING_MODELS.PROJECTION_STATE).where(
+        config.BILLING_MODELS.PROJECTION_STATE.stripe_customer_id
+        == request.stripe_customer_id
     )
     projection_states = await db_connection.exec(projection_state_query)
     projection_state = projection_states[0] if projection_states else None
@@ -339,7 +341,9 @@ async def load_materialization_context(
             f"{request.stripe_customer_id}"
         )
 
-    product_prices = await db_connection.exec(select(config.BILLING_PRODUCT_PRICE))
+    product_prices = await db_connection.exec(
+        select(config.BILLING_MODELS.PRODUCT_PRICE)
+    )
 
     return LoadMaterializationContextResponse(
         stripe_customer_id=request.stripe_customer_id,
@@ -595,7 +599,9 @@ async def persist_materialized_subscription_state(
     """Replace the persisted billing projection with the rebuilt customer state."""
 
     user_rows = await db_connection.exec(
-        select(config.BILLING_USER).where(config.BILLING_USER.id == state.user_id)
+        select(config.BILLING_MODELS.USER).where(
+            config.BILLING_MODELS.USER.id == state.user_id
+        )
     )
     if not user_rows:
         raise ValueError(f"User {state.user_id} was not found")
@@ -605,7 +611,7 @@ async def persist_materialized_subscription_state(
         user.stripe_customer_id = state.stripe_customer_id
 
     now = utcnow()
-    projection_state = config.BILLING_PROJECTION_STATE(
+    projection_state = config.BILLING_MODELS.PROJECTION_STATE(
         stripe_customer_id=state.stripe_customer_id,
         internal_user_id=state.user_id,
         projection_status=SyncStatus.CLEAN,
@@ -621,68 +627,74 @@ async def persist_materialized_subscription_state(
     async with db_connection.transaction():
         await db_connection.update([user])
         await db_connection.exec(
-            delete(config.BILLING_RESOURCE_ACCESS).where(
-                config.BILLING_RESOURCE_ACCESS.user_id == state.user_id
+            delete(config.BILLING_MODELS.RESOURCE_ACCESS).where(
+                config.BILLING_MODELS.RESOURCE_ACCESS.user_id == state.user_id
             )
         )
         await db_connection.exec(
-            delete(config.BILLING_SUBSCRIPTION).where(
-                config.BILLING_SUBSCRIPTION.user_id == state.user_id
+            delete(config.BILLING_MODELS.SUBSCRIPTION).where(
+                config.BILLING_MODELS.SUBSCRIPTION.user_id == state.user_id
             )
         )
         await db_connection.exec(
-            delete(config.BILLING_PAYMENT).where(
-                config.BILLING_PAYMENT.user_id == state.user_id
+            delete(config.BILLING_MODELS.PAYMENT).where(
+                config.BILLING_MODELS.PAYMENT.user_id == state.user_id
             )
         )
         await db_connection.exec(
-            delete(config.BILLING_CHECKOUT_SESSION).where(
-                config.BILLING_CHECKOUT_SESSION.user_id == state.user_id
+            delete(config.BILLING_MODELS.CHECKOUT_SESSION).where(
+                config.BILLING_MODELS.CHECKOUT_SESSION.user_id == state.user_id
             )
         )
 
         if state.checkout_sessions:
             await db_connection.insert(
                 [
-                    config.BILLING_CHECKOUT_SESSION(**checkout_session.model_dump())
+                    config.BILLING_MODELS.CHECKOUT_SESSION(
+                        **checkout_session.model_dump()
+                    )
                     for checkout_session in state.checkout_sessions
                 ]
             )
         if state.subscriptions:
             await db_connection.insert(
                 [
-                    config.BILLING_SUBSCRIPTION(**subscription.model_dump())
+                    config.BILLING_MODELS.SUBSCRIPTION(**subscription.model_dump())
                     for subscription in state.subscriptions
                 ]
             )
         if state.resource_access:
             await db_connection.insert(
                 [
-                    config.BILLING_RESOURCE_ACCESS(**resource_access.model_dump())
+                    config.BILLING_MODELS.RESOURCE_ACCESS(
+                        **resource_access.model_dump()
+                    )
                     for resource_access in state.resource_access
                 ]
             )
         if state.payments:
             await db_connection.insert(
                 [
-                    config.BILLING_PAYMENT(**payment.model_dump())
+                    config.BILLING_MODELS.PAYMENT(**payment.model_dump())
                     for payment in state.payments
                 ]
             )
 
         await db_connection.upsert(
             [projection_state],
-            conflict_fields=(config.BILLING_PROJECTION_STATE.stripe_customer_id,),
+            conflict_fields=(
+                config.BILLING_MODELS.PROJECTION_STATE.stripe_customer_id,
+            ),
             update_fields=(
-                config.BILLING_PROJECTION_STATE.internal_user_id,
-                config.BILLING_PROJECTION_STATE.projection_status,
-                config.BILLING_PROJECTION_STATE.dirty_since,
-                config.BILLING_PROJECTION_STATE.last_projected_at,
-                config.BILLING_PROJECTION_STATE.next_project_at,
-                config.BILLING_PROJECTION_STATE.locked_at,
-                config.BILLING_PROJECTION_STATE.retry_count,
-                config.BILLING_PROJECTION_STATE.last_error,
-                config.BILLING_PROJECTION_STATE.updated_at,
+                config.BILLING_MODELS.PROJECTION_STATE.internal_user_id,
+                config.BILLING_MODELS.PROJECTION_STATE.projection_status,
+                config.BILLING_MODELS.PROJECTION_STATE.dirty_since,
+                config.BILLING_MODELS.PROJECTION_STATE.last_projected_at,
+                config.BILLING_MODELS.PROJECTION_STATE.next_project_at,
+                config.BILLING_MODELS.PROJECTION_STATE.locked_at,
+                config.BILLING_MODELS.PROJECTION_STATE.retry_count,
+                config.BILLING_MODELS.PROJECTION_STATE.last_error,
+                config.BILLING_MODELS.PROJECTION_STATE.updated_at,
             ),
         )
 
@@ -705,16 +717,16 @@ async def find_user_for_customer(
 ) -> Any | None:
     if internal_user_id:
         users = await db_connection.exec(
-            select(config.BILLING_USER).where(
-                config.BILLING_USER.id == internal_user_id
+            select(config.BILLING_MODELS.USER).where(
+                config.BILLING_MODELS.USER.id == internal_user_id
             )
         )
         if users:
             return users[0]
 
     users = await db_connection.exec(
-        select(config.BILLING_USER).where(
-            config.BILLING_USER.stripe_customer_id == stripe_customer_id
+        select(config.BILLING_MODELS.USER).where(
+            config.BILLING_MODELS.USER.stripe_customer_id == stripe_customer_id
         )
     )
     return users[0] if users else None

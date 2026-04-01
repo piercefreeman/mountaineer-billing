@@ -337,8 +337,8 @@ async def load_saved_stripe_event(
 ) -> LoadSavedStripeEventResponse:
     """Load a saved event row and fan it back out into typed Stripe payloads."""
 
-    event_query = select(config.BILLING_STRIPE_EVENT).where(
-        config.BILLING_STRIPE_EVENT.id == request.event_id
+    event_query = select(config.BILLING_MODELS.STRIPE_EVENT).where(
+        config.BILLING_MODELS.STRIPE_EVENT.id == request.event_id
     )
     saved_events = await db_connection.exec(event_query)
     if not saved_events:
@@ -593,7 +593,8 @@ def stripe_object_update_fields(
         )
 
     return tuple(
-        getattr(config.BILLING_STRIPE_OBJECT, field_name) for field_name in field_names
+        getattr(config.BILLING_MODELS.STRIPE_OBJECT, field_name)
+        for field_name in field_names
     )
 
 
@@ -661,7 +662,7 @@ async def upsert_stripe_object_snapshot(
     )
 
     stripe_customer_id = extract_customer_id(payload_data)
-    stripe_object = config.BILLING_STRIPE_OBJECT(
+    stripe_object = config.BILLING_MODELS.STRIPE_OBJECT(
         stripe_id=stripe_id,
         object_type=object_type,
         livemode=bool(payload_data.get("livemode", livemode)),
@@ -692,8 +693,8 @@ async def upsert_stripe_object_snapshot(
     await db_connection.upsert(
         [stripe_object],
         conflict_fields=(
-            config.BILLING_STRIPE_OBJECT.stripe_id,
-            config.BILLING_STRIPE_OBJECT.livemode,
+            config.BILLING_MODELS.STRIPE_OBJECT.stripe_id,
+            config.BILLING_MODELS.STRIPE_OBJECT.livemode,
         ),
         update_fields=stripe_object_update_fields(
             config,

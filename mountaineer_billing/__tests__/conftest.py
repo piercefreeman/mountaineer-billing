@@ -10,6 +10,7 @@ from iceaxe.schemas.cli import create_all
 from mountaineer_auth.authorize import authorize_user
 
 from mountaineer_billing.__tests__ import conf_models as models
+from mountaineer_billing.config import BillingModels
 
 
 async def reset_public_schema(db_connection: DBConnection) -> None:
@@ -58,16 +59,18 @@ def config():
         API_SECRET_KEY="",
         AUTH_USER=models.User,
         AUTH_VERIFICATION_STATE=models.VerificationState,
-        BILLING_USER=models.User,
-        BILLING_RESOURCE_ACCESS=models.ResourceAccess,
-        BILLING_SUBSCRIPTION=models.Subscription,
-        BILLING_METERED_USAGE=models.MeteredUsage,
-        BILLING_PAYMENT=models.Payment,
-        BILLING_PRODUCT_PRICE=models.ProductPrice,
-        BILLING_CHECKOUT_SESSION=models.CheckoutSession,
-        BILLING_STRIPE_EVENT=models.StripeEvent,
-        BILLING_STRIPE_OBJECT=models.StripeObject,
-        BILLING_PROJECTION_STATE=models.BillingProjectionState,
+        BILLING_MODELS=BillingModels(
+            USER=models.User,
+            RESOURCE_ACCESS=models.ResourceAccess,
+            SUBSCRIPTION=models.Subscription,
+            METERED_USAGE=models.MeteredUsage,
+            PAYMENT=models.Payment,
+            PRODUCT_PRICE=models.ProductPrice,
+            CHECKOUT_SESSION=models.CheckoutSession,
+            STRIPE_EVENT=models.StripeEvent,
+            STRIPE_OBJECT=models.StripeObject,
+            PROJECTION_STATE=models.BillingProjectionState,
+        ),
         BILLING_PRODUCTS=models.BILLING_PRODUCTS,
         BILLING_METERED=models.BILLING_METERED,
         STRIPE_API_KEY="",

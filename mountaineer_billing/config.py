@@ -1,10 +1,25 @@
 from typing import Mapping, Sequence, Type
 
-from pydantic import model_validator
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings
 
 from mountaineer_billing import models
 from mountaineer_billing.products import MeteredDefinition, MeteredIDBase, ProductBase
+
+
+class BillingModels(BaseModel):
+    USER: Type[models.UserBillingMixin] = models.UserBillingMixin
+    PRODUCT_PRICE: Type[models.ProductPrice] = models.ProductPrice
+    RESOURCE_ACCESS: Type[models.ResourceAccess] = models.ResourceAccess
+    SUBSCRIPTION: Type[models.Subscription] = models.Subscription
+    METERED_USAGE: Type[models.MeteredUsage] = models.MeteredUsage
+    PAYMENT: Type[models.Payment] = models.Payment
+    CHECKOUT_SESSION: Type[models.CheckoutSession] = models.CheckoutSession
+    STRIPE_EVENT: Type[models.StripeEvent] = models.StripeEvent
+    STRIPE_OBJECT: Type[models.StripeObject] = models.StripeObject
+    PROJECTION_STATE: Type[models.BillingProjectionState] = (
+        models.BillingProjectionState
+    )
 
 
 class BillingConfig(BaseSettings):
@@ -14,16 +29,7 @@ class BillingConfig(BaseSettings):
     # it came from stripe
     STRIPE_WEBHOOK_SECRET: str
 
-    BILLING_USER: Type[models.UserBillingMixin]
-    BILLING_PRODUCT_PRICE: Type[models.ProductPrice]
-    BILLING_RESOURCE_ACCESS: Type[models.ResourceAccess]
-    BILLING_SUBSCRIPTION: Type[models.Subscription]
-    BILLING_METERED_USAGE: Type[models.MeteredUsage]
-    BILLING_PAYMENT: Type[models.Payment]
-    BILLING_CHECKOUT_SESSION: Type[models.CheckoutSession]
-    BILLING_STRIPE_EVENT: Type[models.StripeEvent]
-    BILLING_STRIPE_OBJECT: Type[models.StripeObject]
-    BILLING_PROJECTION_STATE: Type[models.BillingProjectionState]
+    BILLING_MODELS: BillingModels = Field(default_factory=BillingModels)
 
     # Definition of the metadata of resources that are billed with some limits
     BILLING_METERED: Mapping[MeteredIDBase, MeteredDefinition]
@@ -34,7 +40,7 @@ class BillingConfig(BaseSettings):
     BILLING_PRODUCTS: Sequence[ProductBase]
 
     @model_validator(mode="after")
-    def metered_ids_have_definitions(self):
+    def metered_ids_have_definitions(self) -> "BillingConfig":
         all_metered_ids = set(
             metered_id
             for product in self.BILLING_PRODUCTS
