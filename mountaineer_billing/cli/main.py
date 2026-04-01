@@ -19,6 +19,7 @@ from mountaineer.config import (
 from mountaineer.dependencies import get_function_dependencies
 from mountaineer.io import async_to_sync
 
+from mountaineer_billing.cli.materialize import StripeSyncMaterialize
 from mountaineer_billing.cli.sync_down import StripeSyncDown
 from mountaineer_billing.cli.sync_up import BillingSync
 from mountaineer_billing.config import BillingConfig
@@ -153,6 +154,11 @@ def billing_sync() -> None:
     """Sync local billing state with Stripe."""
 
 
+@click.group(name="stripe-sync")
+def stripe_sync() -> None:
+    """Run Stripe maintenance workflows against local billing state."""
+
+
 @billing_sync.command("up")
 @sync_config_option
 @click.option(
@@ -194,10 +200,27 @@ async def sync_down_command(
     await run_with_db_connection(config=config, handler=handler)
 
 
+@stripe_sync.command("materialize")
+@sync_config_option
+@async_to_sync
+async def stripe_sync_materialize_command(
+    *,
+    config_import_path: str | None,
+) -> None:
+    config = load_sync_config(config_import_path)
+
+    async def handler(db_connection: DBConnection) -> None:
+        await StripeSyncMaterialize(config=config).materialize_users(db_connection)
+
+    await run_with_db_connection(config=config, handler=handler)
+
+
 __all__ = [
     "billing_sync",
     "load_sync_config",
     "run_with_db_connection",
+    "stripe_sync",
+    "stripe_sync_materialize_command",
     "sync_down_command",
     "sync_up_command",
 ]

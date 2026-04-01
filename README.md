@@ -156,24 +156,24 @@ from iceaxe.mountaineer import DatabaseConfig
 from mountaineer import ConfigBase
 from mountaineer_auth import AuthConfig
 
-from mountaineer_billing import BillingConfig, models as billing_models
+from mountaineer_billing import BillingConfig, BillingModels, models as billing_models
 
 
 class AppConfig(ConfigBase, AuthConfig, BillingConfig, DatabaseConfig):
     STRIPE_API_KEY: str
     STRIPE_WEBHOOK_SECRET: str
 
-    BILLING_USER: type[billing_models.UserBillingMixin] = User
-    BILLING_PRODUCT_PRICE: type[billing_models.ProductPrice] = ProductPrice
-    BILLING_RESOURCE_ACCESS: type[billing_models.ResourceAccess] = ResourceAccess
-    BILLING_SUBSCRIPTION: type[billing_models.Subscription] = Subscription
-    BILLING_METERED_USAGE: type[billing_models.MeteredUsage] = MeteredUsage
-    BILLING_PAYMENT: type[billing_models.Payment] = Payment
-    BILLING_CHECKOUT_SESSION: type[billing_models.CheckoutSession] = CheckoutSession
-    BILLING_STRIPE_EVENT: type[billing_models.StripeEvent] = StripeEvent
-    BILLING_STRIPE_OBJECT: type[billing_models.StripeObject] = StripeObject
-    BILLING_PROJECTION_STATE: type[billing_models.BillingProjectionState] = (
-        BillingProjectionState
+    BILLING_MODELS: BillingModels = BillingModels(
+        USER=User,
+        PRODUCT_PRICE=ProductPrice,
+        RESOURCE_ACCESS=ResourceAccess,
+        SUBSCRIPTION=Subscription,
+        METERED_USAGE=MeteredUsage,
+        PAYMENT=Payment,
+        CHECKOUT_SESSION=CheckoutSession,
+        STRIPE_EVENT=StripeEvent,
+        STRIPE_OBJECT=StripeObject,
+        PROJECTION_STATE=BillingProjectionState,
     )
 
     BILLING_PRODUCTS = BILLING_PRODUCTS
@@ -207,6 +207,9 @@ billing-sync up --config your_app.config:AppConfig
 
 # Mirror supported Stripe objects back into the local StripeObject table
 billing-sync down --config your_app.config:AppConfig
+
+# Rebuild local billing projections for all users with a Stripe customer id
+stripe-sync materialize --config your_app.config:AppConfig
 ```
 
 If you prefer not to repeat the config path each time, set
@@ -218,6 +221,7 @@ export MOUNTAINEER_BILLING_CONFIG=your_app.config:AppConfig
 billing-sync up --dry-run
 billing-sync up
 billing-sync down
+stripe-sync materialize
 ```
 
 ## Using Billing
@@ -378,7 +382,9 @@ async def get_user_from_metered_request(
     config: AppConfig = Depends(CoreDependencies.get_config_with_type(AppConfig)),
 ) -> UserBillingMixin:
     users = await db_connection.exec(
-        select(config.BILLING_USER).where(config.BILLING_USER.id == request.user_id)
+        select(config.BILLING_MODELS.USER).where(
+            config.BILLING_MODELS.USER.id == request.user_id
+        )
     )
     user = users[0] if users else None
     if not user:

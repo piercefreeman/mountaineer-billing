@@ -78,6 +78,8 @@ The sync CLI closes the loop on that model:
   mappings locally
 - `billing-sync down` mirrors supported Stripe objects back into the local raw
   billing state
+- `stripe-sync materialize` rebuilds local billing projections for users that
+  already have a Stripe customer id
 
 ### 2. Raw Stripe Mirror
 

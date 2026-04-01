@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 billing-sync = "mountaineer_billing.cli.main:billing_sync"
+stripe-sync = "mountaineer_billing.cli.main:stripe_sync"
 
 [build-system]
 requires = ["hatchling"]
