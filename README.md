@@ -98,55 +98,20 @@ from mountaineer_auth import models as auth_models
 
 from mountaineer_billing import models as billing_models
 
+# User additions
+class User(billing_models.UserBillingMixin, auth_models.UserAuthMixin, TableBase): ...
 
-class User(billing_models.UserBillingMixin, auth_models.UserAuthMixin, TableBase):
-    pass
-
-
-class VerificationState(auth_models.VerificationState, TableBase):
-    pass
-
-
-class ProductPrice(
-    billing_models.ProductPrice[ProductID, PriceID],
-    TableBase,
-):
-    pass
-
-
-class ResourceAccess(billing_models.ResourceAccess[ProductID], TableBase):
-    pass
-
-
-class Subscription(billing_models.Subscription, TableBase):
-    pass
-
-
-class MeteredUsage(billing_models.MeteredUsage[MeteredID], TableBase):
-    pass
-
-
-class Payment(billing_models.Payment, TableBase):
-    pass
-
-
-class CheckoutSession(billing_models.CheckoutSession, TableBase):
-    pass
-
-
-class StripeEvent(billing_models.StripeEvent, TableBase):
-    pass
-
-
-class StripeObject(billing_models.StripeObject, TableBase):
-    pass
-
-
-class BillingProjectionState(
-    billing_models.BillingProjectionState,
-    TableBase,
-):
-    pass
+# Regular table additions
+class VerificationState(auth_models.VerificationState, TableBase): ...
+class ProductPrice(billing_models.ProductPrice[ProductID, PriceID], TableBase): ...
+class ResourceAccess(billing_models.ResourceAccess[ProductID], TableBase): ...
+class Subscription(billing_models.Subscription, TableBase): ...
+class MeteredUsage(billing_models.MeteredUsage[MeteredID], TableBase): ...
+class Payment(billing_models.Payment, TableBase): ...
+class CheckoutSession(billing_models.CheckoutSession, TableBase): ...
+class StripeEvent(billing_models.StripeEvent, TableBase): ...
+class StripeObject(billing_models.StripeObject, TableBase): ...
+class BillingProjectionState(billing_models.BillingProjectionState, TableBase): ...
 ```
 
 4. Compose your app config and point `BillingConfig` at those concrete types:
