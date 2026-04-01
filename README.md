@@ -200,22 +200,27 @@ fills a test card in headful Chromium, and records a video of the run.
 Start the local integration stack:
 
 ```bash
-docker compose -f integration-runner/docker-compose.yml up -d postgres daemon app-server
+./integration-runner/scripts/start-stripe-webhooks.sh
 ```
 
-Set a Stripe test secret key in `integration-runner/.env`, then start the local
-Stripe webhook forwarder:
+Set a Stripe test secret key in `integration-runner/.env` first. The helper
+starts `postgres`, `daemon`, and `app-server`, fetches the Stripe webhook
+signing secret with `stripe listen --print-secret`, writes
+`STRIPE_WEBHOOK_SECRET` back into `integration-runner/.env`, recreates
+`app-server` so it reloads the updated environment, and then attaches the live
+listener.
+
+If you want to run the steps manually instead:
 
 ```bash
+docker compose -f integration-runner/docker-compose.yml up -d --wait postgres daemon app-server
+docker compose -f integration-runner/docker-compose.yml run --rm --no-deps stripe-cli listen \
+  --api-key "$(awk -F= '/^STRIPE_API_KEY=/{print $2}' integration-runner/.env)" \
+  --forward-to http://app-server:8000/external/billing/webhooks/stripe \
+  --print-secret --skip-update
+# Write the printed whsec_... value into integration-runner/.env as STRIPE_WEBHOOK_SECRET.
+docker compose -f integration-runner/docker-compose.yml up -d --wait --force-recreate --no-deps app-server
 docker compose -f integration-runner/docker-compose.yml --profile stripe up stripe-cli
-```
-
-Copy the `whsec_...` value printed by `stripe-cli` into
-`integration-runner/.env` as `STRIPE_WEBHOOK_SECRET`, restart `app-server`, and
-then run the walkthrough:
-
-```bash
-docker compose -f integration-runner/docker-compose.yml restart app-server
 docker compose -f integration-runner/docker-compose.yml --profile runner up -d runner
 docker compose -f integration-runner/docker-compose.yml exec runner /workspace/integration-runner/scripts/run-runner.sh
 ```

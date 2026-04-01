@@ -103,11 +103,14 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    entrypoint: ["/bin/sh", "-lc"]
-    command: >
-      exec stripe listen
-      --api-key "$STRIPE_API_KEY"
-      --forward-to http://app-server:8000/external/billing/webhooks/stripe
+    command:
+      [
+        "listen",
+        "--api-key",
+        "${STRIPE_API_KEY}",
+        "--forward-to",
+        "http://app-server:8000/external/billing/webhooks/stripe",
+      ]
 
   runner:
     build:

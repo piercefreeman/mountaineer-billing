@@ -7,17 +7,14 @@ Usage:
 
 ```bash
 # Set STRIPE_API_KEY in integration-runner/.env first.
-docker compose up -d postgres daemon app-server
-docker compose --profile stripe up stripe-cli
+./scripts/start-stripe-webhooks.sh
 ```
 
-Copy the `whsec_...` signing secret printed by `stripe-cli` into
-`integration-runner/.env` as `STRIPE_WEBHOOK_SECRET`, then restart `app-server`
-so webhook verification uses the same secret:
-
-```bash
-docker compose restart app-server
-```
+This helper starts `postgres`, `daemon`, and `app-server`, fetches the
+`whsec_...` signing secret via `stripe listen --print-secret`, writes
+`STRIPE_WEBHOOK_SECRET` back into `integration-runner/.env`, recreates
+`app-server` so it loads the updated environment, and then attaches the live
+`stripe-cli` listener.
 
 Run the browser walkthrough inside the Dockerized X11 environment:
 
