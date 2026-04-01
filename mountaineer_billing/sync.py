@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Literal, Sequence
+from typing import Literal, Protocol, Sequence, runtime_checkable
 
 import stripe
 from iceaxe import DBConnection, select
@@ -21,14 +21,24 @@ INTERNAL_PRICE_ID_KEY = "internal_price_id"
 INTERNAL_FREQUENCY_KEY = "internal_frequency"
 
 
+@runtime_checkable
+class SupportsToDict(Protocol):
+    def to_dict(self, recursive: bool = False) -> object: ...
+
+
+@runtime_checkable
+class SupportsToDictRecursive(Protocol):
+    def to_dict_recursive(self) -> object: ...
+
+
 def stripe_resource_to_dict(value: object) -> object:
     if isinstance(value, dict):
         return value
 
-    if hasattr(value, "to_dict"):
+    if isinstance(value, SupportsToDict):
         return value.to_dict(recursive=True)
 
-    if hasattr(value, "to_dict_recursive"):
+    if isinstance(value, SupportsToDictRecursive):
         return value.to_dict_recursive()
 
     return value
