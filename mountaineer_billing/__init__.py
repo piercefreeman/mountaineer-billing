@@ -31,11 +31,3 @@ from mountaineer_billing.products import (
     ProductIDBase as ProductIDBase,
     RollupType as RollupType,
 )
-
-
-def get_billing_router():
-    from mountaineer_billing.controllers import (
-        get_billing_router as _get_billing_router,
-    )
-
-    return _get_billing_router()

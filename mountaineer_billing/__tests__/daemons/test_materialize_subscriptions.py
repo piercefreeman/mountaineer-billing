@@ -237,8 +237,7 @@ async def test_materialize_subscriptions_workflow_happy_path(
     )
 
     workflow = MaterializeSubscriptions()
-    response = await MaterializeSubscriptions.__workflow_run_impl__(
-        workflow,
+    response = await workflow.run(
         stripe_customer_id=stripe_customer_id,
         internal_user_id=internal_user_id,
     )

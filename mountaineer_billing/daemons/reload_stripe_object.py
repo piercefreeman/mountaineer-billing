@@ -222,7 +222,7 @@ class ReloadStripeObject(Workflow):
     workflow suitable for normal webhook processing, targeted replays, and manual
     backfills without having to re-thread request-time state through the system.
 
-    The workflow is split into two stages:
+    The workflow is split into three stages:
 
     1. ``load_saved_stripe_event`` fetches the stored event row, reconstructs it as
        a real ``stripe.Event`` via ``stripe.Event.construct_from(...)``, and then
@@ -231,6 +231,10 @@ class ReloadStripeObject(Workflow):
     2. The workflow body performs an explicit if/then dispatch based on whichever
        typed field is populated. Each branch calls a dedicated action for that
        object family, while the actual database upsert path is shared.
+    3. ``materialize_updated_customer_subscriptions`` uses the refreshed raw mirror
+       row to trigger a customer-scoped rebuild of the derived billing
+       projections whenever the updated Stripe object can be tied back to a
+       Stripe customer.
 
     This shape is deliberate:
 
@@ -239,7 +243,9 @@ class ReloadStripeObject(Workflow):
     - each supported object type has a narrow action boundary for future
       object-specific logic;
     - the shared upsert helper keeps the raw ``StripeObject`` mirror write path
-      consistent across all object families.
+      consistent across all object families; and
+    - projection rebuilds stay downstream of raw mirror writes so the
+      materialized tables always derive from the newly persisted source of truth.
     """
 
     async def run(  # type: ignore[override]
@@ -254,58 +260,64 @@ class ReloadStripeObject(Workflow):
         )
 
         if hydrated_event.payload.charge is not None:
-            return await self.run_action(
+            reloaded_object = await self.run_action(
                 reload_charge(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
-        if hydrated_event.payload.checkout_session is not None:
-            return await self.run_action(
+        elif hydrated_event.payload.checkout_session is not None:
+            reloaded_object = await self.run_action(
                 reload_checkout_session(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
-        if hydrated_event.payload.customer is not None:
-            return await self.run_action(
+        elif hydrated_event.payload.customer is not None:
+            reloaded_object = await self.run_action(
                 reload_customer(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
-        if hydrated_event.payload.invoice is not None:
-            return await self.run_action(
+        elif hydrated_event.payload.invoice is not None:
+            reloaded_object = await self.run_action(
                 reload_invoice(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
-        if hydrated_event.payload.payment_intent is not None:
-            return await self.run_action(
+        elif hydrated_event.payload.payment_intent is not None:
+            reloaded_object = await self.run_action(
                 reload_payment_intent(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
-        if hydrated_event.payload.price is not None:
-            return await self.run_action(
+        elif hydrated_event.payload.price is not None:
+            reloaded_object = await self.run_action(
                 reload_price(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
-        if hydrated_event.payload.product is not None:
-            return await self.run_action(
+        elif hydrated_event.payload.product is not None:
+            reloaded_object = await self.run_action(
                 reload_product(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
-        if hydrated_event.payload.subscription is not None:
-            return await self.run_action(
+        elif hydrated_event.payload.subscription is not None:
+            reloaded_object = await self.run_action(
                 reload_subscription(hydrated_event),
                 retry=RetryPolicy(attempts=3, backoff_seconds=5),
                 timeout=timedelta(seconds=30),
             )
+        else:
+            return await self.run_action(
+                fail_unsupported_stripe_payload(hydrated_event),
+                retry=RetryPolicy(attempts=1),
+                timeout=timedelta(seconds=5),
+            )
 
         return await self.run_action(
-            fail_unsupported_stripe_payload(hydrated_event),
-            retry=RetryPolicy(attempts=1),
-            timeout=timedelta(seconds=5),
+            materialize_updated_customer_subscriptions(reloaded_object),
+            retry=RetryPolicy(attempts=3, backoff_seconds=5),
+            timeout=timedelta(seconds=60),
         )
 
 
@@ -516,6 +528,21 @@ async def fail_unsupported_stripe_payload(
         f"Stripe event {request.stripe_event_id} does not contain a supported "
         "object payload"
     )
+
+
+@action
+async def materialize_updated_customer_subscriptions(
+    request: ReloadStripeObjectResponse,
+) -> ReloadStripeObjectResponse:
+    """Rebuild derived subscription state after a raw Stripe object refresh."""
+
+    if request.stripe_customer_id is None:
+        return request
+
+    from .materialize_subscriptions import MaterializeSubscriptions
+
+    await MaterializeSubscriptions().run(stripe_customer_id=request.stripe_customer_id)
+    return request
 
 
 async def _reload_stripe_object(

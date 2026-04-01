@@ -27,7 +27,10 @@ if TYPE_CHECKING:
 else:
     from stripe import SignatureVerificationError
 
+router = APIRouter(prefix="/external/billing")
 
+
+@router.post("/webhooks/stripe")
 async def stripe_webhook(
     request: Request,
     config: BillingConfig = Depends(
@@ -107,9 +110,3 @@ async def stripe_webhook(
     await ReloadStripeObject().run(event_id=saved_event_id)
 
     return dict(success=True, event_id=stripe_event_id)
-
-
-def get_billing_router():
-    router = APIRouter(prefix="/external/billing")
-    router.post("/webhooks/stripe")(stripe_webhook)
-    return router

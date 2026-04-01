@@ -377,9 +377,7 @@ async def test_reload_stripe_object_workflow_happy_path(
         action_mocks[action_name] = action_mock
 
     workflow = ReloadStripeObject()
-    response = await ReloadStripeObject.__workflow_run_impl__(
-        workflow, event_id=event_id
-    )
+    response = await workflow.run(event_id=event_id)
 
     assert response == expected_response
     load_saved_stripe_event.assert_awaited_once()
