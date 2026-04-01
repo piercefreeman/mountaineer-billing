@@ -214,6 +214,35 @@ class ReloadStripeObjectResponse(BaseModel):
 
 @workflow
 class ReloadStripeObject(Workflow):
+    """
+    Replay one saved Stripe event into the raw Stripe-object mirror.
+
+    This workflow intentionally starts from the local ``StripeEvent`` primary key
+    instead of accepting a raw webhook payload. The saved event row is the
+    canonical audit record for the webhook we already validated, which makes the
+    workflow suitable for normal webhook processing, targeted replays, and manual
+    backfills without having to re-thread request-time state through the system.
+
+    The workflow is split into two stages:
+
+    1. ``load_saved_stripe_event`` fetches the stored event row, reconstructs it as
+       a real ``stripe.Event`` via ``stripe.Event.construct_from(...)``, and then
+       re-hydrates the event's ``data.object`` into a typed payload container with
+       one optional field per supported Stripe object family.
+    2. The workflow body performs an explicit if/then dispatch based on whichever
+       typed field is populated. Each branch calls a dedicated action for that
+       object family, while the actual database upsert path is shared.
+
+    This shape is deliberate:
+
+    - the Stripe SDK reserialization is isolated to one action;
+    - the workflow control flow stays explicit and easy to extend;
+    - each supported object type has a narrow action boundary for future
+      object-specific logic;
+    - the shared upsert helper keeps the raw ``StripeObject`` mirror write path
+      consistent across all object families.
+    """
+
     async def run(  # type: ignore[override]
         self,
         *,
@@ -274,9 +303,10 @@ class ReloadStripeObject(Workflow):
                 timeout=timedelta(seconds=30),
             )
 
-        raise ValueError(
-            f"Stripe event {hydrated_event.stripe_event_id} does not contain a "
-            "supported object payload"
+        return await self.run_action(
+            fail_unsupported_stripe_payload(hydrated_event),
+            retry=RetryPolicy(attempts=1),
+            timeout=timedelta(seconds=5),
         )
 
 
@@ -286,6 +316,8 @@ async def load_saved_stripe_event(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> LoadSavedStripeEventResponse:
+    """Load a saved event row and fan it back out into typed Stripe payloads."""
+
     event_query = select(config.BILLING_STRIPE_EVENT).where(
         config.BILLING_STRIPE_EVENT.id == request.event_id
     )
@@ -294,7 +326,9 @@ async def load_saved_stripe_event(
         raise ValueError(f"Stripe event {request.event_id} was not found")
 
     saved_event = saved_events[0]
-    stripe_event = stripe.Event.construct_from(saved_event.payload, config.STRIPE_API_KEY)
+    stripe_event = stripe.Event.construct_from(
+        saved_event.payload, config.STRIPE_API_KEY
+    )
     stripe_object = stripe_event.data.object
     stripe_object_payload = stripe_object_to_dict(stripe_object)
     object_type = stripe_object_payload.get("object")
@@ -327,6 +361,8 @@ async def reload_charge(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the charge snapshot referenced by the saved event."""
+
     if request.payload.charge is None:
         raise ValueError("Charge payload is required")
     return await _reload_stripe_object(
@@ -344,6 +380,8 @@ async def reload_checkout_session(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the checkout-session snapshot referenced by the saved event."""
+
     if request.payload.checkout_session is None:
         raise ValueError("Checkout session payload is required")
     return await _reload_stripe_object(
@@ -361,6 +399,8 @@ async def reload_customer(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the customer snapshot referenced by the saved event."""
+
     if request.payload.customer is None:
         raise ValueError("Customer payload is required")
     return await _reload_stripe_object(
@@ -378,6 +418,8 @@ async def reload_invoice(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the invoice snapshot referenced by the saved event."""
+
     if request.payload.invoice is None:
         raise ValueError("Invoice payload is required")
     return await _reload_stripe_object(
@@ -395,6 +437,8 @@ async def reload_payment_intent(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the payment-intent snapshot referenced by the saved event."""
+
     if request.payload.payment_intent is None:
         raise ValueError("Payment intent payload is required")
     return await _reload_stripe_object(
@@ -412,6 +456,8 @@ async def reload_price(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the price snapshot referenced by the saved event."""
+
     if request.payload.price is None:
         raise ValueError("Price payload is required")
     return await _reload_stripe_object(
@@ -429,6 +475,8 @@ async def reload_product(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the product snapshot referenced by the saved event."""
+
     if request.payload.product is None:
         raise ValueError("Product payload is required")
     return await _reload_stripe_object(
@@ -446,6 +494,8 @@ async def reload_subscription(
     config: BillingConfig = Depend(get_billing_config),  # type: ignore[assignment]
     db_connection: DBConnection = Depend(DatabaseDependencies.get_db_connection),  # type: ignore[assignment]
 ) -> ReloadStripeObjectResponse:
+    """Upsert the subscription snapshot referenced by the saved event."""
+
     if request.payload.subscription is None:
         raise ValueError("Subscription payload is required")
     return await _reload_stripe_object(
@@ -454,6 +504,18 @@ async def reload_subscription(
         object_payload=request.payload.subscription,
         config=config,
         db_connection=db_connection,
+    )
+
+
+@action
+async def fail_unsupported_stripe_payload(
+    request: LoadSavedStripeEventResponse,
+) -> ReloadStripeObjectResponse:
+    """Raise a workflow-safe error for events without a supported object body."""
+
+    raise ValueError(
+        f"Stripe event {request.stripe_event_id} does not contain a supported "
+        "object payload"
     )
 
 

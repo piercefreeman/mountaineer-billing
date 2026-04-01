@@ -112,7 +112,7 @@ class UserBillingMixin(BillingIdentityMixin, autodetect=False):
     Local user fields needed for Stripe identity and checkout bootstrapping. This is intended
     for addition to the `mountaineer_auth.models.UserAuthMixin` model that is typically
     used by users' User models.
-    
+
     """
 
     # Used to pre-seed checkout, fill out if you collect during your

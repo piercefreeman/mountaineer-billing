@@ -37,6 +37,7 @@ async def reset_public_schema(db_connection: DBConnection) -> None:
     """
     )
 
+
 @pytest.fixture(autouse=True)
 def config():
     """

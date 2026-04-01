@@ -3,7 +3,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from importlib import import_module
 from types import UnionType
-from typing import Annotated, Any, ClassVar, Generic, TypeVar, Union, cast, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    ClassVar,
+    Generic,
+    TypeVar,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+)
 
 from pydantic import BaseModel
 from pydantic_core import core_schema as pydantic_core_schema
