@@ -1,0 +1,31 @@
+[project]
+name = "integration-runner"
+version = "0.1.0"
+description = "Local Playwright runner for mountaineer-billing checkout flows"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1.0",
+    "iceaxe>=0.0.0,<1.0.0",
+    "lxml>=5.3.0",
+    "mountaineer",
+    "mountaineer-auth",
+    "mountaineer-billing",
+    "playwright>=1.52.0",
+]
+
+[project.scripts]
+integration-runner = "integration_runner.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.5",
+]
+
+[tool.uv.sources]
+mountaineer-billing = { path = "..", editable = true }
