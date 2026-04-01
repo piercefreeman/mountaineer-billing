@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ browser_module = importlib.import_module("integration_runner.browser")
 dom_module = importlib.import_module("integration_runner.dom")
 
 BrowserActionTimeoutError = browser_module.BrowserActionTimeoutError
+_select_card_payment_method = browser_module._select_card_payment_method
 _type_into_first_visible_locator = browser_module._type_into_first_visible_locator
 summarize_html_document = dom_module.summarize_html_document
 summarize_page_dom = dom_module.summarize_page_dom
@@ -61,7 +63,7 @@ def test_summarize_html_document_includes_actionable_xpaths() -> None:
         url="https://example.com/checkout",
     )
 
-    assert 'FRAME main url=https://example.com/checkout' in summary
+    assert "FRAME main url=https://example.com/checkout" in summary
     assert 'heading level=1 text="Checkout"' in summary
     assert 'input xpath="' in summary
     assert 'name="email"' in summary
@@ -93,7 +95,9 @@ async def test_summarize_page_dom_includes_iframes() -> None:
     )
 
     assert "FRAME main url=https://example.com/checkout" in summary
-    assert 'FRAME iframe[1] name="card-frame" url=https://js.stripe.com/frame' in summary
+    assert (
+        'FRAME iframe[1] name="card-frame" url=https://js.stripe.com/frame' in summary
+    )
     assert 'button xpath="' in summary
     assert 'input xpath="' in summary
     assert 'name="cardnumber"' in summary
@@ -112,3 +116,19 @@ async def test_type_into_first_visible_locator_raises_timeout_error() -> None:
                 value="4242424242424242",
                 description="card number",
             )
+
+
+@pytest.mark.asyncio
+async def test_select_card_payment_method_clicks_card_option_button() -> None:
+    fake_page = SimpleNamespace(wait_for_timeout=AsyncMock())
+    fake_locator = SimpleNamespace(click=AsyncMock())
+
+    with patch(
+        "integration_runner.browser._find_first_visible_locator",
+        new=AsyncMock(side_effect=[None, fake_locator]),
+    ) as mock_find_locator:
+        await _select_card_payment_method(fake_page)
+
+    assert mock_find_locator.await_count == 2
+    fake_locator.click.assert_awaited_once_with()
+    fake_page.wait_for_timeout.assert_awaited_once_with(250)

@@ -43,9 +43,7 @@ class IntegrationRunnerConfig(ConfigBase, AuthConfig, BillingConfig, DatabaseCon
         PROJECTION_STATE=models.BillingProjectionState,
     )
     BILLING_PRODUCTS: Sequence[ProductBase] = models.BILLING_PRODUCTS
-    BILLING_METERED: Mapping[MeteredIDBase, MeteredDefinition] = (
-        models.BILLING_METERED
-    )
+    BILLING_METERED: Mapping[MeteredIDBase, MeteredDefinition] = models.BILLING_METERED
 
     INTEGRATION_RUNNER_USER_EMAIL: str = "checkout-runner@example.com"
     INTEGRATION_RUNNER_USER_PASSWORD: str = "integration-runner-password"
@@ -64,7 +62,7 @@ class IntegrationRunnerConfig(ConfigBase, AuthConfig, BillingConfig, DatabaseCon
         default=Path("artifacts/integration-runner/videos")
     )
     INTEGRATION_RUNNER_SLOW_MO_MS: int = 250
-    INTEGRATION_RUNNER_TIMEOUT_MS: int = 30_000
+    INTEGRATION_RUNNER_TIMEOUT_MS: int = 5_000
     INTEGRATION_RUNNER_PAUSE_AFTER_MS: int = 5_000
     INTEGRATION_RUNNER_SUBMIT: bool = False
 

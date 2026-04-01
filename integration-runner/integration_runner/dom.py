@@ -151,7 +151,9 @@ def _interesting_line(element: etree._Element) -> str | None:
         return None
 
     actionable = _is_actionable(element, tag)
-    text = _element_text(element) if actionable or tag in TEXT_TAGS else _own_text(element)
+    text = (
+        _element_text(element) if actionable or tag in TEXT_TAGS else _own_text(element)
+    )
     attributes = _attribute_summary(element)
     depth = min(_element_depth(element), 8)
     indent = "  " * depth
@@ -197,10 +199,7 @@ def summarize_html_document(
         document = html.document_fromstring(html_content)
     except (etree.ParserError, ValueError):
         normalized_html = _truncate(_normalize_whitespace(html_content), max_length=500)
-        return (
-            f"FRAME {frame_id} url={url}\n"
-            f'  raw_html text="{normalized_html}"'
-        )
+        return f'FRAME {frame_id} url={url}\n  raw_html text="{normalized_html}"'
 
     lines = [f"FRAME {frame_id} url={url}"]
     line_count = 0

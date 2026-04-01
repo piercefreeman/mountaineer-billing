@@ -1039,6 +1039,7 @@ dependencies = [
     { name = "mountaineer-auth" },
     { name = "mountaineer-billing" },
     { name = "playwright" },
+    { name = "python-dotenv" },
 ]
 
 [package.dev-dependencies]
@@ -1056,6 +1057,7 @@ requires-dist = [
     { name = "mountaineer-auth" },
     { name = "mountaineer-billing", editable = "../" },
     { name = "playwright", specifier = ">=1.52.0" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
 ]
 
 [package.metadata.requires-dev]

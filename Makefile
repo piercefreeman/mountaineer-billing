@@ -5,7 +5,7 @@ all: lint
 
 # Package directory
 PKG_DIR := ./mountaineer_billing/
-RUFF_PATHS := mountaineer_billing scripts
+RUFF_PATHS := mountaineer_billing scripts integration-runner
 TEST_COMPOSE_FILE := docker-compose.test.yml
 
 # Define a function to run ruff on the billing source tree

@@ -12,6 +12,7 @@ dependencies = [
     "mountaineer-auth",
     "mountaineer-billing",
     "playwright>=1.52.0",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.scripts]

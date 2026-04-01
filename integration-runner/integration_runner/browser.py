@@ -17,8 +17,9 @@ except ModuleNotFoundError:
     PlaywrightTimeoutError = TimeoutError
     async_playwright = None
 
-FIELD_POLL_ATTEMPTS = 40
+FIELD_POLL_ATTEMPTS = 20
 FIELD_POLL_INTERVAL_SECONDS = 0.25
+PAYMENT_METHOD_SETTLE_DELAY_MS = 250
 
 
 @dataclass(frozen=True)
@@ -64,9 +65,13 @@ def _email_locator_factories() -> list[LocatorFactory]:
 def _card_number_locator_factories() -> list[LocatorFactory]:
     return [
         lambda scope: scope.get_by_placeholder(re.compile(r"1234 1234 1234 1234")),
-        lambda scope: scope.get_by_label(re.compile(r"card number|card information", re.I)),
+        lambda scope: scope.get_by_label(
+            re.compile(r"card number|card information", re.I)
+        ),
         lambda scope: scope.locator("input[name='cardnumber']"),
-        lambda scope: scope.locator("input[data-elements-stable-field-name='cardNumber']"),
+        lambda scope: scope.locator(
+            "input[data-elements-stable-field-name='cardNumber']"
+        ),
     ]
 
 
@@ -75,7 +80,9 @@ def _expiry_locator_factories() -> list[LocatorFactory]:
         lambda scope: scope.get_by_placeholder(re.compile(r"MM\\s*/\\s*YY", re.I)),
         lambda scope: scope.get_by_label(re.compile(r"expiration|expiry", re.I)),
         lambda scope: scope.locator("input[name='exp-date']"),
-        lambda scope: scope.locator("input[data-elements-stable-field-name='cardExpiry']"),
+        lambda scope: scope.locator(
+            "input[data-elements-stable-field-name='cardExpiry']"
+        ),
     ]
 
 
@@ -91,7 +98,9 @@ def _cvc_locator_factories() -> list[LocatorFactory]:
 def _cardholder_name_locator_factories() -> list[LocatorFactory]:
     return [
         lambda scope: scope.get_by_label(re.compile(r"name on card|full name", re.I)),
-        lambda scope: scope.get_by_placeholder(re.compile(r"name on card|full name", re.I)),
+        lambda scope: scope.get_by_placeholder(
+            re.compile(r"name on card|full name", re.I)
+        ),
         lambda scope: scope.locator("input[autocomplete='cc-name']"),
         lambda scope: scope.locator("input[name='billingName']"),
     ]
@@ -103,6 +112,20 @@ def _postal_code_locator_factories() -> list[LocatorFactory]:
         lambda scope: scope.get_by_placeholder(re.compile(r"zip|postal code", re.I)),
         lambda scope: scope.locator("input[autocomplete='postal-code']"),
         lambda scope: scope.locator("input[name='postalCode']"),
+    ]
+
+
+def _card_payment_method_locator_factories() -> list[LocatorFactory]:
+    return [
+        lambda scope: scope.get_by_role(
+            "button", name=re.compile(r"pay with card", re.I)
+        ),
+        lambda scope: scope.locator("button[aria-label='Pay with card']"),
+        lambda scope: scope.get_by_label(re.compile(r"^card$", re.I)),
+        lambda scope: scope.locator("#payment-method-accordion-item-title-card"),
+        lambda scope: scope.locator(
+            "input[name='payment-method-accordion-item-title'][value='card']"
+        ),
     ]
 
 
@@ -196,6 +219,25 @@ async def _write_dom_timeout_artifact(
         return None
 
 
+async def _select_card_payment_method(page: Any) -> None:
+    existing_card_field = await _find_first_visible_locator(
+        page,
+        _card_number_locator_factories(),
+    )
+    if existing_card_field is not None:
+        return
+
+    locator = await _find_first_visible_locator(
+        page,
+        _card_payment_method_locator_factories(),
+    )
+    if locator is None:
+        return
+
+    await locator.click()
+    await page.wait_for_timeout(PAYMENT_METHOD_SETTLE_DELAY_MS)
+
+
 async def run_checkout_browser(
     *,
     checkout_url: str,
@@ -221,14 +263,17 @@ async def run_checkout_browser(
             record_video_dir=str(video_dir),
             record_video_size={"width": 1440, "height": 1080},
         )
+        context.set_default_timeout(timeout_ms)
         page = await context.new_page()
+        page.set_default_timeout(timeout_ms)
         try:
             await page.goto(
                 checkout_url,
                 wait_until="domcontentloaded",
                 timeout=timeout_ms,
             )
-            await page.wait_for_load_state("networkidle")
+            await page.wait_for_load_state("load", timeout=timeout_ms)
+            await _select_card_payment_method(page)
 
             await _type_into_first_visible_locator(
                 page,

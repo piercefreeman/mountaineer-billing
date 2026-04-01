@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+from dotenv import load_dotenv
 from iceaxe import DBConnection, select
 from iceaxe.mountaineer import DatabaseDependencies
 from iceaxe.schemas.cli import create_all
@@ -186,6 +187,8 @@ async def _build_checkout_url(
 @click.command(name="integration-runner")
 @async_to_sync
 async def main() -> None:
+    load_dotenv()
+
     try:
         config = get_runner_config()
     except ValueError as exc:
