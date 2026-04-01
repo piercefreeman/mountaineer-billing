@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from importlib import import_module
-from typing import Any, ClassVar, Generic, TypeVar, cast
+from types import UnionType
+from typing import Annotated, Any, ClassVar, Generic, TypeVar, Union, cast, get_args, get_origin
 
 from pydantic import BaseModel
 from pydantic_core import core_schema as pydantic_core_schema
@@ -115,8 +116,42 @@ class LazyAdapter(Generic[ValidatedModel]):
 
         model_module = import_module(module_path, package=self._package)
         model_type = cast(type[BaseModel], getattr(model_module, symbol_name))
+        self._rebuild_model(model_type, model_module)
         self._model_cache[discriminator_value] = model_type
         return model_type
+
+    def _rebuild_model(
+        self,
+        model_type: type[BaseModel],
+        model_module: Any,
+    ) -> None:
+        internal_namespace: dict[str, Any] = {}
+        module_name = getattr(model_module, "__name__", "")
+        if module_name:
+            try:
+                internal_module = import_module(f"{module_name}._internal")
+            except ModuleNotFoundError:
+                try:
+                    package_name, _, _ = module_name.rpartition(".")
+                    internal_module = (
+                        import_module(f"{package_name}._internal")
+                        if package_name
+                        else None
+                    )
+                except ModuleNotFoundError:
+                    internal_module = None
+            if internal_module is not None:
+                internal_namespace = dict(vars(internal_module))
+
+        model_type.model_rebuild(
+            _types_namespace={
+                "Annotated": Annotated,
+                **internal_namespace,
+                **dict(vars(model_module)),
+            },
+            force=True,
+            raise_errors=False,
+        )
 
     def model_type_for_api_version(self, api_version: str) -> type[BaseModel]:
         return self._load_model(api_version)
@@ -180,27 +215,57 @@ class LazyPayloadBase:
         }
 
 
+class LazyPayloadAnnotation:
+    def __init__(self, *, name: str, adapter: LazyAdapter[Any]):
+        self.name = name
+        self.adapter = adapter
+
+    def __get_pydantic_core_schema__(
+        self,
+        source_type: Any,
+        handler: Any,
+    ) -> pydantic_core_schema.CoreSchema:
+        schema = self.adapter.core_schema()
+        if _allows_none(source_type):
+            return pydantic_core_schema.nullable_schema(schema)
+        return schema
+
+    def __get_pydantic_json_schema__(
+        self,
+        core_schema_value: pydantic_core_schema.CoreSchema,
+        handler: Any,
+    ) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "title": self.name,
+        }
+
+
+def _allows_none(source_type: Any) -> bool:
+    origin = get_origin(source_type)
+    if origin not in {Union, UnionType}:
+        return False
+
+    return any(arg is type(None) for arg in get_args(source_type))
+
+
 def make_lazy_payload_type(
     name: str,
     adapter: LazyAdapter[Any],
     *,
     module_name: str,
-) -> type[LazyPayloadBase]:
-    return cast(
-        type[LazyPayloadBase],
-        type(
-            name,
-            (LazyPayloadBase,),
-            {
-                "__module__": module_name,
-                "adapter": adapter,
-            },
-        ),
-    )
+    nullable: bool = False,
+) -> Any:
+    payload_type: Any = dict[str, Any] | None if nullable else dict[str, Any]
+    return Annotated[
+        payload_type,
+        LazyPayloadAnnotation(name=name, adapter=adapter),
+    ]
 
 
 __all__ = [
     "LazyAdapter",
+    "LazyPayloadAnnotation",
     "LazyPayloadBase",
     "make_lazy_payload_type",
 ]

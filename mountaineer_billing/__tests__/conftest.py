@@ -12,6 +12,31 @@ from mountaineer_auth.authorize import authorize_user
 from mountaineer_billing.__tests__ import conf_models as models
 
 
+async def reset_public_schema(db_connection: DBConnection) -> None:
+    await db_connection.conn.execute(
+        """
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """
+    )
+
+    await db_connection.conn.execute(
+        """
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT typname FROM pg_type WHERE typtype = 'e' AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')) LOOP
+                EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(r.typname) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """
+    )
+
 @pytest.fixture(autouse=True)
 def config():
     """
@@ -63,35 +88,13 @@ async def db_connection(config: models.AppConfig):
         )
     )
 
-    # Step 1: Drop all tables in the public schema
-    await db_connection.conn.execute(
-        """
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """
-    )
-
-    # Step 2: Drop all custom types in the public schema
-    await db_connection.conn.execute(
-        """
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (SELECT typname FROM pg_type WHERE typtype = 'e' AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')) LOOP
-                EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(r.typname) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """
-    )
-
+    await reset_public_schema(db_connection)
     await create_all(db_connection)
 
-    return db_connection
+    try:
+        yield db_connection
+    finally:
+        await db_connection.close()
 
 
 @pytest_asyncio.fixture

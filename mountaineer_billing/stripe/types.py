@@ -631,6 +631,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_charge
         | v2026_02_25_clover_charge
         | v2026_03_25_dahlia_charge
+        | None
     )
 
     StripeCheckoutSessionPayload: TypeAlias = (
@@ -658,6 +659,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_checkout_session
         | v2026_02_25_clover_checkout_session
         | v2026_03_25_dahlia_checkout_session
+        | None
     )
 
     StripeCustomerPayload: TypeAlias = (
@@ -685,6 +687,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_customer
         | v2026_02_25_clover_customer
         | v2026_03_25_dahlia_customer
+        | None
     )
 
     StripeInvoicePayload: TypeAlias = (
@@ -712,6 +715,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_invoice
         | v2026_02_25_clover_invoice
         | v2026_03_25_dahlia_invoice
+        | None
     )
 
     StripePaymentIntentPayload: TypeAlias = (
@@ -739,6 +743,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_payment_intent
         | v2026_02_25_clover_payment_intent
         | v2026_03_25_dahlia_payment_intent
+        | None
     )
 
     StripePricePayload: TypeAlias = (
@@ -766,6 +771,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_price
         | v2026_02_25_clover_price
         | v2026_03_25_dahlia_price
+        | None
     )
 
     StripeProductPayload: TypeAlias = (
@@ -793,6 +799,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_product
         | v2026_02_25_clover_product
         | v2026_03_25_dahlia_product
+        | None
     )
 
     StripeSubscriptionPayload: TypeAlias = (
@@ -820,6 +827,7 @@ if TYPE_CHECKING:
         | v2026_01_28_clover_subscription
         | v2026_02_25_clover_subscription
         | v2026_03_25_dahlia_subscription
+        | None
     )
 
     StripeObjectPayload: TypeAlias = (
@@ -927,48 +935,56 @@ if not TYPE_CHECKING:
         "StripeChargePayload",
         StripeChargeAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
     StripeCheckoutSessionPayload = make_lazy_payload_type(
         "StripeCheckoutSessionPayload",
         StripeCheckoutSessionAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
     StripeCustomerPayload = make_lazy_payload_type(
         "StripeCustomerPayload",
         StripeCustomerAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
     StripeInvoicePayload = make_lazy_payload_type(
         "StripeInvoicePayload",
         StripeInvoiceAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
     StripePaymentIntentPayload = make_lazy_payload_type(
         "StripePaymentIntentPayload",
         StripePaymentIntentAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
     StripePricePayload = make_lazy_payload_type(
         "StripePricePayload",
         StripePriceAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
     StripeProductPayload = make_lazy_payload_type(
         "StripeProductPayload",
         StripeProductAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
     StripeSubscriptionPayload = make_lazy_payload_type(
         "StripeSubscriptionPayload",
         StripeSubscriptionAdapter,
         module_name=__name__,
+        nullable=True,
     )
 
 __all__ = [

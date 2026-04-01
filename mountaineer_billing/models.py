@@ -108,7 +108,12 @@ class TimestampedMixin(CreatedAtMixin, autodetect=False):
 
 
 class UserBillingMixin(BillingIdentityMixin, autodetect=False):
-    """Local user fields needed for Stripe identity and checkout bootstrapping."""
+    """
+    Local user fields needed for Stripe identity and checkout bootstrapping. This is intended
+    for addition to the `mountaineer_auth.models.UserAuthMixin` model that is typically
+    used by users' User models.
+    
+    """
 
     # Used to pre-seed checkout, fill out if you collect during your
     # signup process
@@ -185,29 +190,20 @@ class StripeObject(TimestampedMixin, autodetect=False):
     api_version: str | None = None
 
     generic_payload: dict[str, Any] | None = Field(default=None, is_json=True)
-    generic_payload_hash: str = ""
-    charge: StripeChargePayload | None = Field(default=None, is_json=True)
-    charge_hash: str = ""
-    checkout_session: StripeCheckoutSessionPayload | None = Field(
+    charge: StripeChargePayload = Field(default=None, is_json=True)
+    checkout_session: StripeCheckoutSessionPayload = Field(
         default=None,
         is_json=True,
     )
-    checkout_session_hash: str = ""
-    customer: StripeCustomerPayload | None = Field(default=None, is_json=True)
-    customer_hash: str = ""
-    invoice: StripeInvoicePayload | None = Field(default=None, is_json=True)
-    invoice_hash: str = ""
-    payment_intent: StripePaymentIntentPayload | None = Field(
+    customer: StripeCustomerPayload = Field(default=None, is_json=True)
+    invoice: StripeInvoicePayload = Field(default=None, is_json=True)
+    payment_intent: StripePaymentIntentPayload = Field(
         default=None,
         is_json=True,
     )
-    payment_intent_hash: str = ""
-    price: StripePricePayload | None = Field(default=None, is_json=True)
-    price_hash: str = ""
-    product: StripeProductPayload | None = Field(default=None, is_json=True)
-    product_hash: str = ""
-    subscription: StripeSubscriptionPayload | None = Field(default=None, is_json=True)
-    subscription_hash: str = ""
+    price: StripePricePayload = Field(default=None, is_json=True)
+    product: StripeProductPayload = Field(default=None, is_json=True)
+    subscription: StripeSubscriptionPayload = Field(default=None, is_json=True)
 
     stripe_customer_id: str | None = None
     internal_user_id: UUID | None = None
