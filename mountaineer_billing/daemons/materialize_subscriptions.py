@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from iceaxe import DBConnection, delete, select
@@ -20,40 +20,60 @@ from mountaineer_billing.stripe.types import (
 from .reload_stripe_object import get_billing_config, to_datetime, utcnow
 
 
+@runtime_checkable
+class HasStripeData(Protocol):
+    data: list[Any]
+
+
+@runtime_checkable
+class HasStripeId(Protocol):
+    id: str
+
+
+@runtime_checkable
+class HasStripeRoot(Protocol):
+    root: str | None
+
+
 def nested_stripe_id(value: object) -> str | None:
     if isinstance(value, str):
         return value
 
-    raw_id = getattr(value, "id", None)
-    return raw_id if isinstance(raw_id, str) else None
+    if isinstance(value, HasStripeRoot):
+        return value.root
+
+    if isinstance(value, HasStripeId):
+        return value.id
+
+    return None
 
 
-def list_data(value: object) -> list[Any]:
-    data = getattr(value, "data", None)
-    if isinstance(data, list):
-        return data
-    return []
+def list_data(value: HasStripeData | None) -> list[Any]:
+    if value is None:
+        return []
+
+    return value.data
 
 
 def subscription_items(payload: StripeSubscriptionPayload) -> list[Any]:
     if payload is None:
         return []
 
-    return list_data(getattr(payload, "items", None))
+    return list_data(payload.items)
 
 
 def checkout_line_items(payload: StripeCheckoutSessionPayload) -> list[Any]:
     if payload is None:
         return []
 
-    return list_data(getattr(payload, "line_items", None))
+    return list_data(payload.line_items)
 
 
 def invoice_line_items(payload: StripeInvoicePayload) -> list[Any]:
     if payload is None:
         return []
 
-    return list_data(getattr(payload, "lines", None))
+    return list_data(payload.lines)
 
 
 def line_item_price_id(payload: object) -> str | None:
@@ -85,6 +105,9 @@ def subscription_period_start(payload: StripeSubscriptionPayload) -> datetime | 
     if payload is None:
         return None
 
+    # `current_period_start` exists on older subscription payloads but was removed
+    # from the top-level object in newer API versions. Keep the direct access on
+    # `items.data[*]`, and use `getattr` only for the version-skewed top-level field.
     direct = to_datetime(getattr(payload, "current_period_start", None))
     if direct:
         return direct
@@ -100,6 +123,7 @@ def subscription_period_end(payload: StripeSubscriptionPayload) -> datetime | No
     if payload is None:
         return None
 
+    # `current_period_end` has the same version split as `current_period_start`.
     direct = to_datetime(getattr(payload, "current_period_end", None))
     if direct:
         return direct
@@ -366,19 +390,12 @@ async def build_materialized_subscription_state(
         if payload is None:
             continue
 
-        checkout_session_id = getattr(payload, "id", None)
-        if not isinstance(checkout_session_id, str):
-            continue
-
-        stripe_subscription_id = nested_stripe_id(
-            getattr(payload, "subscription", None)
-        )
+        checkout_session_id = payload.id
+        stripe_subscription_id = nested_stripe_id(payload.subscription)
         checkout_session_rows.append(
             CheckoutSessionMaterializedRecord(
                 stripe_checkout_session_id=checkout_session_id,
-                stripe_payment_intent_id=nested_stripe_id(
-                    getattr(payload, "payment_intent", None)
-                ),
+                stripe_payment_intent_id=nested_stripe_id(payload.payment_intent),
                 stripe_subscription_id=stripe_subscription_id,
                 stripe_customer_id=context.stripe_customer_id,
                 user_id=context.user_id,
@@ -393,14 +410,11 @@ async def build_materialized_subscription_state(
         if payload is None:
             continue
 
-        stripe_subscription_id = getattr(payload, "id", None)
-        if not isinstance(stripe_subscription_id, str):
-            continue
-
+        stripe_subscription_id = payload.id
         subscription_rows.append(
             SubscriptionMaterializedRecord(
                 stripe_subscription_id=stripe_subscription_id,
-                stripe_status=safe_stripe_status(getattr(payload, "status", None)),
+                stripe_status=safe_stripe_status(payload.status),
                 stripe_current_period_start=subscription_period_start(payload),
                 stripe_current_period_end=subscription_period_end(payload),
                 stripe_checkout_session_id=checkout_session_by_subscription.get(
@@ -410,7 +424,7 @@ async def build_materialized_subscription_state(
             )
         )
 
-        ended_at = to_datetime(getattr(payload, "ended_at", None))
+        ended_at = to_datetime(payload.ended_at)
         for item in subscription_items(payload):
             price_id = line_item_price_id(item)
             if not price_id:
@@ -442,10 +456,12 @@ async def build_materialized_subscription_state(
         if payload is None or not getattr(payload, "paid", False):
             continue
 
-        stripe_invoice_id = getattr(payload, "id", None)
+        stripe_invoice_id = payload.id
         if not isinstance(stripe_invoice_id, str):
             continue
 
+        # `paid` and `subscription` are not available on every invoice schema
+        # version in the union, so keep those as `getattr` fallbacks.
         stripe_subscription_id = nested_stripe_id(
             getattr(payload, "subscription", None)
         )
@@ -471,7 +487,7 @@ async def build_materialized_subscription_state(
 
             paid_amount = getattr(line_item, "amount", None)
             if not isinstance(paid_amount, int):
-                paid_amount = getattr(payload, "amount_paid", None)
+                paid_amount = payload.amount_paid
             if not isinstance(paid_amount, int):
                 continue
 
@@ -492,16 +508,13 @@ async def build_materialized_subscription_state(
             )
 
     for payload in context.checkout_sessions:
-        if payload is None or getattr(payload, "payment_status", None) != "paid":
+        if payload is None or payload.payment_status != "paid":
             continue
-        if nested_stripe_id(getattr(payload, "subscription", None)):
-            continue
-
-        stripe_checkout_session_id = getattr(payload, "id", None)
-        if not isinstance(stripe_checkout_session_id, str):
+        if nested_stripe_id(payload.subscription):
             continue
 
-        stripe_invoice_id = nested_stripe_id(getattr(payload, "invoice", None))
+        stripe_checkout_session_id = payload.id
+        stripe_invoice_id = nested_stripe_id(payload.invoice)
         for line_item in checkout_line_items(payload):
             price_id = line_item_price_id(line_item)
             if not price_id:
@@ -552,7 +565,7 @@ async def build_materialized_subscription_state(
             quantity = getattr(line_item, "quantity", None)
             resource_rows.append(
                 ResourceAccessMaterializedRecord(
-                    started_datetime=to_datetime(getattr(payload, "created", None)),
+                    started_datetime=to_datetime(payload.created),
                     stripe_subscription_id=None,
                     is_perpetual=True,
                     prorated_usage=float(quantity or 1),
