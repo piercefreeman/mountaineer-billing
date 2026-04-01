@@ -197,35 +197,39 @@ resets and recreates the local billing schema, syncs the demo catalog to Stripe
 test mode, opens a fresh Stripe Checkout session through `mountaineer-billing`,
 fills a test card in headful Chromium, and records a video of the run.
 
-Install the extra browser dependency and Chromium once:
+Start the local integration stack:
 
 ```bash
-docker compose -f integration-runner/docker-compose.yml up -d
-uv sync --project integration-runner
-uv run --project integration-runner playwright install chromium
+docker compose -f integration-runner/docker-compose.yml up -d postgres daemon app-server
 ```
 
-Set a Stripe test secret key:
+Set a Stripe test secret key in `integration-runner/.env`, then start the local
+Stripe webhook forwarder:
 
 ```bash
-export STRIPE_API_KEY=sk_test_your_key_here
+docker compose -f integration-runner/docker-compose.yml --profile stripe up stripe-cli
 ```
 
-Then run the walkthrough:
+Copy the `whsec_...` value printed by `stripe-cli` into
+`integration-runner/.env` as `STRIPE_WEBHOOK_SECRET`, restart `app-server`, and
+then run the walkthrough:
 
 ```bash
-uv run --project integration-runner integration-runner
+docker compose -f integration-runner/docker-compose.yml restart app-server
+docker compose -f integration-runner/docker-compose.yml --profile runner up -d runner
+docker compose -f integration-runner/docker-compose.yml exec runner /workspace/integration-runner/scripts/run-runner.sh
 ```
 
 The runner config lives in `integration-runner/integration_runner/config.py`.
 `STRIPE_API_KEY` must start with `sk_test_`; live keys are rejected at config
 validation time. By default the runner uses the PostgreSQL settings exposed by
 `integration-runner/docker-compose.yml`, clears the public schema on startup,
-creates or reuses
-`checkout-runner@example.com`, syncs the demo products to Stripe, types
-Stripe's standard `4242` test card, and saves video output under
-`artifacts/integration-runner/videos`. If you want to change the product, URLs,
-card data, browser behavior, or database settings, override the
+creates or reuses `checkout-runner@example.com`, syncs the demo products to
+Stripe, types Stripe's standard `4242` test card, and saves video output under
+`artifacts/integration-runner/videos`. The Docker stack also exposes an
+`app-server` service for webhook processing and a `daemon` service for the
+Waymark-backed billing workflows. If you want to change the product, URLs, card
+data, browser behavior, or database settings, override the
 `INTEGRATION_RUNNER_*` and `POSTGRES_*` environment variables exposed by that
 config.
 

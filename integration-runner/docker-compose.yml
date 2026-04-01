@@ -1,3 +1,10 @@
+x-integration-env: &integration-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: mountaineer_billing
+  POSTGRES_PASSWORD: mysecretpassword
+  POSTGRES_DB: mountaineer_billing_test_db
+
 services:
   postgres:
     image: postgres:16
@@ -15,6 +22,117 @@ services:
       retries: 10
     volumes:
       - integration_runner_postgres_data:/var/lib/postgresql/data
+
+  daemon:
+    build:
+      context: ..
+      dockerfile: integration-runner/Dockerfile
+      target: daemon
+    command: ["/bin/sh", "/workspace/integration-runner/scripts/start-daemon.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      <<: *integration-env
+      WAYMARK_DATABASE_URL: postgresql://mountaineer_billing:mysecretpassword@postgres:5432/mountaineer_billing_test_db
+      WAYMARK_BRIDGE_GRPC_ADDR: 0.0.0.0:24117
+      WAYMARK_WORKER_GRPC_ADDR: 0.0.0.0:24118
+      WAYMARK_USER_MODULE: integration_runner.daemon_bootstrap
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; sock = socket.create_connection(('127.0.0.1', 24117), timeout=5); sock.close()",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app-server:
+    build:
+      context: ..
+      dockerfile: integration-runner/Dockerfile
+      target: app-server
+    command:
+      [
+        "uv",
+        "run",
+        "--project",
+        "integration-runner",
+        "uvicorn",
+        "integration_runner.app_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      daemon:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      <<: *integration-env
+      WAYMARK_BRIDGE_GRPC_ADDR: daemon:24117
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).read()",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  stripe-cli:
+    image: stripe/stripe-cli:latest
+    profiles:
+      - stripe
+    depends_on:
+      app-server:
+        condition: service_healthy
+    env_file:
+      - .env
+    entrypoint: ["/bin/sh", "-lc"]
+    command: >
+      exec stripe listen
+      --api-key "$STRIPE_API_KEY"
+      --forward-to http://app-server:8000/external/billing/webhooks/stripe
+
+  runner:
+    build:
+      context: ..
+      dockerfile: integration-runner/Dockerfile
+      target: runner
+    profiles:
+      - runner
+    command: ["sleep", "infinity"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      daemon:
+        condition: service_healthy
+      app-server:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      <<: *integration-env
+      WAYMARK_BRIDGE_GRPC_ADDR: daemon:24117
+    init: true
+    shm_size: 2gb
+    volumes:
+      - ../artifacts/integration-runner:/workspace/artifacts/integration-runner
 
 volumes:
   integration_runner_postgres_data:
