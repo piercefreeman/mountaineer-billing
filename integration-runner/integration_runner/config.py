@@ -48,7 +48,7 @@ class IntegrationRunnerConfig(ConfigBase, AuthConfig, BillingConfig, DatabaseCon
     INTEGRATION_RUNNER_USER_EMAIL: str = "checkout-runner@example.com"
     INTEGRATION_RUNNER_USER_PASSWORD: str = "integration-runner-password"
     INTEGRATION_RUNNER_FULL_NAME: str = "Integration Runner"
-    INTEGRATION_RUNNER_PRODUCT_ID: models.ProductID = models.ProductID.ONEOFF_50_ITEMS
+    INTEGRATION_RUNNER_PRODUCT_ID: models.ProductID = models.ProductID.SUBSCRIPTION_GOLD
     INTEGRATION_RUNNER_PRICE_ID: models.PriceID = models.PriceID.DEFAULT
     INTEGRATION_RUNNER_SUCCESS_URL: str = "https://example.com/billing/success"
     INTEGRATION_RUNNER_CANCEL_URL: str = "https://example.com/billing/cancel"
@@ -62,9 +62,12 @@ class IntegrationRunnerConfig(ConfigBase, AuthConfig, BillingConfig, DatabaseCon
         default=Path("artifacts/integration-runner/videos")
     )
     INTEGRATION_RUNNER_SLOW_MO_MS: int = 250
-    INTEGRATION_RUNNER_TIMEOUT_MS: int = 5_000
+    INTEGRATION_RUNNER_TIMEOUT_MS: int = 30_000
     INTEGRATION_RUNNER_PAUSE_AFTER_MS: int = 5_000
-    INTEGRATION_RUNNER_SUBMIT: bool = False
+    INTEGRATION_RUNNER_SUBMIT: bool = True
+    INTEGRATION_RUNNER_UNCHECK_SAVE_INFORMATION: bool = True
+    INTEGRATION_RUNNER_POST_CHECKOUT_TIMEOUT_MS: int = 60_000
+    INTEGRATION_RUNNER_POST_CHECKOUT_POLL_INTERVAL_MS: int = 1_000
 
     @model_validator(mode="after")
     def validate_test_stripe_key(self) -> "IntegrationRunnerConfig":

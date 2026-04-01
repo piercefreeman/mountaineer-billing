@@ -16,6 +16,7 @@ browser_module = importlib.import_module("integration_runner.browser")
 dom_module = importlib.import_module("integration_runner.dom")
 
 BrowserActionTimeoutError = browser_module.BrowserActionTimeoutError
+_maybe_uncheck_save_information = browser_module._maybe_uncheck_save_information
 _select_card_payment_method = browser_module._select_card_payment_method
 _type_into_first_visible_locator = browser_module._type_into_first_visible_locator
 summarize_html_document = dom_module.summarize_html_document
@@ -132,3 +133,20 @@ async def test_select_card_payment_method_clicks_card_option_button() -> None:
     assert mock_find_locator.await_count == 2
     fake_locator.click.assert_awaited_once_with(force=True)
     fake_page.wait_for_timeout.assert_awaited_once_with(250)
+
+
+@pytest.mark.asyncio
+async def test_maybe_uncheck_save_information_uses_checkbox_state() -> None:
+    fake_page = object()
+    fake_locator = SimpleNamespace(
+        is_checked=AsyncMock(return_value=True),
+        uncheck=AsyncMock(),
+    )
+
+    with patch(
+        "integration_runner.browser._find_first_visible_locator",
+        new=AsyncMock(return_value=fake_locator),
+    ):
+        await _maybe_uncheck_save_information(fake_page)
+
+    fake_locator.uncheck.assert_awaited_once_with(force=True)

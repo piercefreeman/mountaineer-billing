@@ -4,6 +4,7 @@ import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Any, Callable
 
 from integration_runner.dom import write_page_dom_summary
@@ -20,6 +21,7 @@ except ModuleNotFoundError:
 FIELD_POLL_ATTEMPTS = 20
 FIELD_POLL_INTERVAL_SECONDS = 0.25
 PAYMENT_METHOD_SETTLE_DELAY_MS = 250
+POST_SUBMIT_POLL_INTERVAL_MS = 250
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,18 @@ def _submit_button_locator_factories() -> list[LocatorFactory]:
     ]
 
 
+def _save_information_checkbox_locator_factories() -> list[LocatorFactory]:
+    return [
+        lambda scope: scope.get_by_role(
+            "checkbox",
+            name=re.compile(r"save my information|save information", re.I),
+        ),
+        lambda scope: scope.get_by_label(
+            re.compile(r"save my information|save information", re.I)
+        ),
+    ]
+
+
 async def _all_scopes(page: Any) -> list[Any]:
     return [page, *page.frames]
 
@@ -211,6 +225,91 @@ async def _click_first_visible_locator(
     await locator.click()
 
 
+async def _set_checkbox_state(
+    page: Any,
+    *,
+    locator_factories: list[LocatorFactory],
+    checked: bool,
+) -> None:
+    locator = await _find_first_visible_locator(page, locator_factories)
+    if locator is None:
+        return
+
+    try:
+        is_checked = await locator.is_checked()
+    except Exception:
+        is_checked = None
+
+    if is_checked is checked:
+        return
+
+    try:
+        if checked:
+            await locator.check(force=True)
+        else:
+            await locator.uncheck(force=True)
+        return
+    except Exception:
+        pass
+
+    await locator.click(force=True)
+
+
+async def _maybe_uncheck_save_information(page: Any) -> None:
+    await _set_checkbox_state(
+        page,
+        locator_factories=_save_information_checkbox_locator_factories(),
+        checked=False,
+    )
+
+
+def _strip_fragment(url: str) -> str:
+    return url.split("#", 1)[0]
+
+
+def _is_checkout_complete(
+    *,
+    current_url: str,
+    checkout_url: str,
+    success_url: str | None,
+    cancel_url: str | None,
+) -> bool:
+    if success_url and current_url.startswith(success_url):
+        return True
+    if cancel_url and current_url.startswith(cancel_url):
+        return True
+
+    return (
+        _strip_fragment(current_url) != _strip_fragment(checkout_url)
+        and "checkout.stripe.com" not in current_url
+    )
+
+
+async def _wait_for_checkout_completion(
+    page: Any,
+    *,
+    checkout_url: str,
+    success_url: str | None,
+    cancel_url: str | None,
+    timeout_ms: int,
+) -> None:
+    deadline = monotonic() + (timeout_ms / 1000)
+    while monotonic() < deadline:
+        if _is_checkout_complete(
+            current_url=page.url,
+            checkout_url=checkout_url,
+            success_url=success_url,
+            cancel_url=cancel_url,
+        ):
+            return
+
+        await page.wait_for_timeout(POST_SUBMIT_POLL_INTERVAL_MS)
+
+    raise BrowserActionTimeoutError(
+        "Timed out waiting for Stripe Checkout to redirect after submit"
+    )
+
+
 async def _write_dom_timeout_artifact(
     *,
     page: Any,
@@ -258,10 +357,13 @@ async def run_checkout_browser(
     checkout_url: str,
     card: CardDetails,
     video_dir: Path,
+    success_url: str | None = None,
+    cancel_url: str | None = None,
     slow_mo_ms: int = 250,
     timeout_ms: int = 30_000,
     pause_after_ms: int = 5_000,
     submit: bool = False,
+    uncheck_save_information: bool = False,
 ) -> BrowserRunResult:
     if async_playwright is None:
         raise RuntimeError(playwright_install_instructions())
@@ -331,12 +433,23 @@ async def run_checkout_browser(
                     optional=True,
                 )
 
+            if uncheck_save_information:
+                await _maybe_uncheck_save_information(page)
+
             if submit:
                 await _click_first_visible_locator(
                     page,
                     locator_factories=_submit_button_locator_factories(),
                     description="submit",
                 )
+                await _wait_for_checkout_completion(
+                    page,
+                    checkout_url=checkout_url,
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                    timeout_ms=timeout_ms,
+                )
+                await page.wait_for_load_state("load", timeout=timeout_ms)
 
             await page.wait_for_timeout(pause_after_ms)
         except (BrowserActionTimeoutError, PlaywrightTimeoutError) as exc:
