@@ -3,19 +3,18 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from importlib import import_module
 from typing import Annotated, Callable
-from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from iceaxe import DBConnection, select
 from pydantic import BaseModel
 
-from mountaineer_billing.daemons import reload_stripe_object as reload_module
+from mountaineer_billing.__tests__ import conf_models as models
 from mountaineer_billing.daemons.reload_stripe_object import (
-    LoadSavedStripeEventResponse,
     ReloadStripeObject,
-    ReloadStripeObjectPayload,
     ReloadStripeObjectResponse,
 )
+from mountaineer_billing.enums import SyncStatus
 from mountaineer_billing.stripe.v2026_03_25_dahlia.models import (
     ChargeModel,
     CustomerModel,
@@ -29,27 +28,6 @@ from mountaineer_billing.stripe.v2026_03_25_dahlia.models import (
 from mountaineer_billing.stripe.v2026_03_25_dahlia.models.checkout import Session
 
 API_VERSION = "2026-03-25.dahlia"
-RELOAD_ACTION_NAMES = (
-    "reload_charge",
-    "reload_checkout_session",
-    "reload_customer",
-    "reload_invoice",
-    "reload_payment_intent",
-    "reload_price",
-    "reload_product",
-    "reload_subscription",
-)
-
-OBJECT_TYPE_TO_ACTION_NAME = {
-    "charge": "reload_charge",
-    "checkout.session": "reload_checkout_session",
-    "customer": "reload_customer",
-    "invoice": "reload_invoice",
-    "payment_intent": "reload_payment_intent",
-    "price": "reload_price",
-    "product": "reload_product",
-    "subscription": "reload_subscription",
-}
 
 
 def rebuild_versioned_model(model_type: type[BaseModel]) -> type[BaseModel]:
@@ -327,7 +305,8 @@ def build_event_model(
     ],
 )
 async def test_reload_stripe_object_workflow_happy_path(
-    monkeypatch: pytest.MonkeyPatch,
+    db_connection: DBConnection,
+    user: models.User,
     event_type: str,
     object_type: str,
     typed_field: str,
@@ -340,16 +319,6 @@ async def test_reload_stripe_object_workflow_happy_path(
         event_type=event_type,
         object_model=object_model,
     )
-    hydrated_event = LoadSavedStripeEventResponse(
-        event_id=event_id,
-        stripe_event_id=event_model.id,
-        livemode=False,
-        latest_event_created_at=datetime.now(timezone.utc),
-        payload=ReloadStripeObjectPayload(
-            event=event_model,
-            **{typed_field: object_model},
-        ),
-    )
     expected_response = ReloadStripeObjectResponse(
         event_id=event_id,
         stripe_event_id=event_model.id,
@@ -357,35 +326,52 @@ async def test_reload_stripe_object_workflow_happy_path(
         object_type=object_type,
         stripe_customer_id=expected_customer_id,
     )
+    if expected_customer_id is not None:
+        user.stripe_customer_id = expected_customer_id
+        await db_connection.update([user])
 
-    load_saved_stripe_event = AsyncMock(return_value=hydrated_event)
-    monkeypatch.setattr(
-        reload_module,
-        "load_saved_stripe_event",
-        load_saved_stripe_event,
+    await db_connection.insert(
+        [
+            models.StripeEvent(
+                id=event_id,
+                stripe_event_id=event_model.id,
+                stripe_event_type=event_type,
+                stripe_object_id=expected_response.stripe_object_id,
+                stripe_object_type=object_type,
+                stripe_customer_id=expected_customer_id,
+                livemode=False,
+                stripe_created_at=datetime.now(timezone.utc),
+                payload=event_model.model_dump(mode="json"),
+            )
+        ]
     )
-
-    action_mocks: dict[str, AsyncMock] = {}
-    expected_action_name = OBJECT_TYPE_TO_ACTION_NAME[object_type]
-    for action_name in RELOAD_ACTION_NAMES:
-        action_mock = AsyncMock(
-            return_value=expected_response
-            if action_name == expected_action_name
-            else None
-        )
-        monkeypatch.setattr(reload_module, action_name, action_mock)
-        action_mocks[action_name] = action_mock
 
     workflow = ReloadStripeObject()
     response = await workflow.run(event_id=event_id)
 
     assert response == expected_response
-    load_saved_stripe_event.assert_awaited_once()
-    load_request = load_saved_stripe_event.await_args.args[0]
-    assert load_request.event_id == event_id
+    saved_objects = await db_connection.exec(
+        select(models.StripeObject).where(
+            models.StripeObject.stripe_id == expected_response.stripe_object_id
+        )
+    )
 
-    for action_name, action_mock in action_mocks.items():
-        if action_name == expected_action_name:
-            action_mock.assert_awaited_once_with(hydrated_event)
-        else:
-            action_mock.assert_not_awaited()
+    assert len(saved_objects) == 1
+    saved_object = saved_objects[0]
+    assert saved_object.object_type == object_type
+    assert saved_object.sync_status == SyncStatus.CLEAN
+    assert saved_object.stripe_customer_id == expected_customer_id
+    typed_payload = getattr(saved_object, typed_field)
+    assert isinstance(typed_payload, dict)
+    assert typed_payload["id"] == expected_response.stripe_object_id
+
+    projection_states = await db_connection.exec(
+        select(models.BillingProjectionState).where(
+            models.BillingProjectionState.stripe_customer_id == expected_customer_id
+        )
+    )
+    if expected_customer_id is None:
+        assert projection_states == []
+    else:
+        assert len(projection_states) == 1
+        assert projection_states[0].projection_status == SyncStatus.CLEAN

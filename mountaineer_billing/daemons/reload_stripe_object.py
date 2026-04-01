@@ -121,6 +121,8 @@ def stripe_object_to_dict(stripe_object: Any) -> dict[str, Any]:
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
+        if hasattr(stripe_object, "to_dict"):
+            return stripe_object.to_dict(recursive=True)
         if hasattr(stripe_object, "to_dict_recursive"):
             return stripe_object.to_dict_recursive()
 
@@ -565,35 +567,42 @@ async def _reload_stripe_object(
             f"Stripe {object_type} payload contains an invalid api version"
         )
 
+    serialized_payload = object_payload.model_dump(mode="json")
     charge_payload = (
-        cast(StripeChargePayload, object_payload) if object_type == "charge" else None
+        cast(StripeChargePayload, serialized_payload)
+        if object_type == "charge"
+        else None
     )
     checkout_session_payload = (
-        cast(StripeCheckoutSessionPayload, object_payload)
+        cast(StripeCheckoutSessionPayload, serialized_payload)
         if object_type == "checkout.session"
         else None
     )
     customer_payload = (
-        cast(StripeCustomerPayload, object_payload)
+        cast(StripeCustomerPayload, serialized_payload)
         if object_type == "customer"
         else None
     )
     invoice_payload = (
-        cast(StripeInvoicePayload, object_payload) if object_type == "invoice" else None
+        cast(StripeInvoicePayload, serialized_payload)
+        if object_type == "invoice"
+        else None
     )
     payment_intent_payload = (
-        cast(StripePaymentIntentPayload, object_payload)
+        cast(StripePaymentIntentPayload, serialized_payload)
         if object_type == "payment_intent"
         else None
     )
     price_payload = (
-        cast(StripePricePayload, object_payload) if object_type == "price" else None
+        cast(StripePricePayload, serialized_payload) if object_type == "price" else None
     )
     product_payload = (
-        cast(StripeProductPayload, object_payload) if object_type == "product" else None
+        cast(StripeProductPayload, serialized_payload)
+        if object_type == "product"
+        else None
     )
     subscription_payload = (
-        cast(StripeSubscriptionPayload, object_payload)
+        cast(StripeSubscriptionPayload, serialized_payload)
         if object_type == "subscription"
         else None
     )

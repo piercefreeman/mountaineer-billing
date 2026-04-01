@@ -650,7 +650,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.135.2"
+version = "0.135.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -659,9 +659,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/73/5903c4b13beae98618d64eb9870c3fac4f605523dd0312ca5c80dadbd5b9/fastapi-0.135.2.tar.gz", hash = "sha256:88a832095359755527b7f63bb4c6bc9edb8329a026189eed83d6c1afcf419d56", size = 395833, upload-time = "2026-03-23T14:12:41.697Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f7/e6/7adb4c5fa231e82c35b8f5741a9f2d055f520c29af5546fd70d3e8e1cd2e/fastapi-0.135.3.tar.gz", hash = "sha256:bd6d7caf1a2bdd8d676843cdcd2287729572a1ef524fc4d65c17ae002a1be654", size = 396524, upload-time = "2026-04-01T16:23:58.188Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/ea/18f6d0457f9efb2fc6fa594857f92810cadb03024975726db6546b3d6fcf/fastapi-0.135.2-py3-none-any.whl", hash = "sha256:0af0447d541867e8db2a6a25c23a8c4bd80e2394ac5529bd87501bbb9e240ca5", size = 117407, upload-time = "2026-03-23T14:12:43.284Z" },
+    { url = "https://files.pythonhosted.org/packages/84/a4/5caa2de7f917a04ada20018eccf60d6cc6145b0199d55ca3711b0fc08312/fastapi-0.135.3-py3-none-any.whl", hash = "sha256:9b0f590c813acd13d0ab43dd8494138eb58e484bfac405db1f3187cfc5810d98", size = 117734, upload-time = "2026-04-01T16:23:59.328Z" },
 ]
 
 [[package]]
@@ -939,7 +939,7 @@ wheels = [
 
 [[package]]
 name = "iceaxe"
-version = "0.10.0"
+version = "0.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asyncpg" },
@@ -947,17 +947,17 @@ dependencies = [
     { name = "pydantic" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/44/915c899f9171357b6d95350c40e32d295f16a13966437e83f47a23f173b8/iceaxe-0.10.0.tar.gz", hash = "sha256:29336f570c9a5b5e82514be0e1ce47099492489fb9f9c798a11c818aaad336ef", size = 219716, upload-time = "2026-03-26T21:19:03.69Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/92/0fadabc7d447b69142eae9d9c0cab92a4145da186e085cdc2c003b906f51/iceaxe-0.10.1.tar.gz", hash = "sha256:4a39d33d3f5a9539f0734e5c01a2c7cfabd53e12b48b8d2547f1b6b09011e9c1", size = 220560, upload-time = "2026-04-01T05:45:47.362Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/cc/6e70e5b1a672ec5a147f36858a8280c57eeb0b7cfe36aff997f1e473e13a/iceaxe-0.10.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:4f1c3de6e5c0e79d43e347ca8eeebab54dd6ff2c29221f1775e5bb2cf4978ce0", size = 280774, upload-time = "2026-03-26T21:18:50.264Z" },
-    { url = "https://files.pythonhosted.org/packages/f5/7e/afd804f8bf4d2f53e573ea755a57f507372841c66152d9e190db06fabaac/iceaxe-0.10.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d217fc61a31045992023231b09dbad74517f191c366a7cf9e31eb649e640881c", size = 284274, upload-time = "2026-03-26T21:18:52.021Z" },
-    { url = "https://files.pythonhosted.org/packages/b8/4d/fe156e58e964b98d3febffde91609ccf88c0b68ba7a5c8232695c9cb1a89/iceaxe-0.10.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:0c450c49ae5661b9bb76e10047d174e1290ec45e34eacc57e0435340655003cd", size = 286992, upload-time = "2026-03-26T21:18:53.51Z" },
-    { url = "https://files.pythonhosted.org/packages/37/33/f8cb76a5dae2bd981c4d9ba3ba43622e364c9bcb985bda8f96c841116625/iceaxe-0.10.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:187a4059c7111548c38485e4cd20ad777bdbab2c71b7a459e23b9b3c1d596057", size = 285063, upload-time = "2026-03-26T21:18:54.746Z" },
-    { url = "https://files.pythonhosted.org/packages/fc/03/b0366c1de948534dc06c71ab27c07e79ed65a110f66d1ee0199274432267/iceaxe-0.10.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9bd95a2289956433ae6e0a24ad05893dfdf1544af21c90036c6c94911a1f7577", size = 288662, upload-time = "2026-03-26T21:18:56.28Z" },
-    { url = "https://files.pythonhosted.org/packages/bb/21/c023a09622c0da743d74802235872e9e8e3d0195da48048352653753687b/iceaxe-0.10.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:dc09dfbb6e38a1efe50a8a5cfa5a0f30bb843f9fe44a567a679350e3fa63c141", size = 291674, upload-time = "2026-03-26T21:18:57.605Z" },
-    { url = "https://files.pythonhosted.org/packages/f0/c3/31d4a750148b85697c19cc0fa693a15e037c15d3587e36cbd252b3b19b31/iceaxe-0.10.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:98bf4d96145aa5474daec22db3847553e99a92117ab4f23d1ff76bdfcecd3415", size = 285062, upload-time = "2026-03-26T21:18:59.468Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/c7/22ee35a44697c4510ecb9db1cf38db52cf3ba7e8cea299f040024f566632/iceaxe-0.10.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:74b49a7ffcfb08edf33ffbab404c0b607794ee29b99fb1d3c9883f33f00760e4", size = 288661, upload-time = "2026-03-26T21:19:01.069Z" },
-    { url = "https://files.pythonhosted.org/packages/c4/16/fe82eddf0978978bc17a02430c84ec1f92f03187ccd9468fd61a6fdf2e85/iceaxe-0.10.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:d5d3e58fbafc8a4d6ae5bc30e6eba47705b5f2c600db3cd73a69dd36cb5a2ae2", size = 291724, upload-time = "2026-03-26T21:19:02.448Z" },
+    { url = "https://files.pythonhosted.org/packages/02/17/43603550e929250733462216ce0e2e9e4151fc6b179d707363c563d93344/iceaxe-0.10.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:aa97af79493001f1735f5c5aa2069b2ddc9eef8e3484cbeae048cbc5c962ca10", size = 281747, upload-time = "2026-04-01T05:45:31.882Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/20/560ef187f351457bf2031dd0dc8871ada9ac2d431aa8397aa93e144c3dd6/iceaxe-0.10.1-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:bf0e66594a28e76572e48bd865d0933b431f8471fa428aa6a91e15786706d87f", size = 285245, upload-time = "2026-04-01T05:45:33.757Z" },
+    { url = "https://files.pythonhosted.org/packages/01/e1/79ce0d7c0ea80ea361f88d2080dbb7a42bfc3a7cea26cdac98926925b50b/iceaxe-0.10.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ffaaa9998f942c5059375613cd5ca2c8ddd0e0c3cfd97c356e2447e4a575754a", size = 287962, upload-time = "2026-04-01T05:45:35.601Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/ca/a197ddba9e19383b544ed78b03838cceb38e610cb1730a1a30fcbb24252a/iceaxe-0.10.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:0489b889d7af7dd1397e21789a095eade27f0e37cecaf6d3c65435603dce761e", size = 286039, upload-time = "2026-04-01T05:45:37.665Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/69/dbe5a009f670a8096b00d8e18a68f70cd23af5444995cddd854c9484a0b5/iceaxe-0.10.1-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:e7618a387465b1fc3cb760f952f199146c6960ff509027c1086a2f96561365c8", size = 289633, upload-time = "2026-04-01T05:45:39.329Z" },
+    { url = "https://files.pythonhosted.org/packages/80/f6/3a31628e6f30d75eaf148ddf044a19015892d764ebcfbba83c9e77f96a08/iceaxe-0.10.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:e6a6b5d4cc7ee087670da23a016edfa4ef08a6356c912834f7cb44bb5dc83681", size = 292646, upload-time = "2026-04-01T05:45:40.827Z" },
+    { url = "https://files.pythonhosted.org/packages/12/87/796daa45b8af01c9f919df3ea723ad5814da1f8f937c9809b7bfc118211c/iceaxe-0.10.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:be0354cbcd2aa2fba2724f1c2344cb3b25197dcef5fcfcaa7cd65e4da3bea88c", size = 286037, upload-time = "2026-04-01T05:45:42.372Z" },
+    { url = "https://files.pythonhosted.org/packages/55/e9/1e570c9e793884b1cea285a6801c50015aa04caf0a293113f3f88ce88559/iceaxe-0.10.1-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:424c7c18ac2de8e83e81baaaebc8d4d1bfcd027dbd0d433991645c0d4c860e22", size = 289629, upload-time = "2026-04-01T05:45:44.076Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/47/3de0b883f933f94d58cd36d2c5829cad32d8fd2efd3dd72ec56818e8bb45/iceaxe-0.10.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:dcbcd9ca3dc12cbde9ac53989f65142cc80539b60ae761807049c1c4c724c789", size = 292693, upload-time = "2026-04-01T05:45:45.766Z" },
 ]
 
 [[package]]
@@ -1227,14 +1227,14 @@ wheels = [
 
 [[package]]
 name = "mountaineer-di"
-version = "0.1.2"
+version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/14/1990a29b4e945cb61ddee58d030dac0692a62c322d8d3facec3cb9932606/mountaineer_di-0.1.2.tar.gz", hash = "sha256:22e144e79d1aeefebd9989bcd7c63d2632396fdf5f7f6fa165343922a736260a", size = 30449, upload-time = "2026-03-30T03:36:20.36Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/00/3b/9682b70eabf35b0297f2d04d99f778b7ee6a3fd1cbc5568d4c5fcc4d6275/mountaineer_di-0.1.3.tar.gz", hash = "sha256:1fad18638dade1a4b9d60a0fe0d52892aba44b1e056c282304a5ab4cc13c4c00", size = 44228, upload-time = "2026-04-01T17:41:14.584Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/3e/e3e7efb91a76a1cdfb5f2b2a827c9b0fe4e361b3fbaf8cfc1bf94679cf0b/mountaineer_di-0.1.2-py3-none-any.whl", hash = "sha256:8a87bd119db9c4b812fa7f992e1659b3c84e8819842393abd3dd63fba66c31cf", size = 10225, upload-time = "2026-03-30T03:36:19.033Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/1e/cab4d03fb9cf4bb3028d64e27d6a210d78b30c086e319662b74be33381f6/mountaineer_di-0.1.3-py3-none-any.whl", hash = "sha256:3bf7cae8adaf2460cc88f907db050cdcee4d0b6de81f0b0cfad930585e157889", size = 10605, upload-time = "2026-04-01T17:41:13.223Z" },
 ]
 
 [[package]]
