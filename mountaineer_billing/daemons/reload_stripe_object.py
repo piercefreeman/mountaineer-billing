@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import stripe
@@ -27,7 +27,6 @@ from mountaineer_billing.stripe.types import (
     StripeEventPayload,
     StripeInvoiceAdapter,
     StripeInvoicePayload,
-    StripeObjectPayload,
     StripePaymentIntentAdapter,
     StripePaymentIntentPayload,
     StripePriceAdapter,
@@ -523,7 +522,7 @@ async def _reload_stripe_object(
     *,
     request: LoadSavedStripeEventResponse,
     object_type: str,
-    object_payload: StripeObjectPayload,
+    object_payload: BaseModel,
     config: BillingConfig,
     db_connection: DBConnection,
 ) -> ReloadStripeObjectResponse:
@@ -539,9 +538,38 @@ async def _reload_stripe_object(
             f"Stripe {object_type} payload contains an invalid api version"
         )
 
-    field_name = OBJECT_TYPE_TO_FIELD[object_type]
-    payload_fields = {field: None for field in OBJECT_TYPE_TO_FIELD.values()}
-    payload_fields[field_name] = object_payload
+    charge_payload = (
+        cast(StripeChargePayload, object_payload) if object_type == "charge" else None
+    )
+    checkout_session_payload = (
+        cast(StripeCheckoutSessionPayload, object_payload)
+        if object_type == "checkout.session"
+        else None
+    )
+    customer_payload = (
+        cast(StripeCustomerPayload, object_payload)
+        if object_type == "customer"
+        else None
+    )
+    invoice_payload = (
+        cast(StripeInvoicePayload, object_payload) if object_type == "invoice" else None
+    )
+    payment_intent_payload = (
+        cast(StripePaymentIntentPayload, object_payload)
+        if object_type == "payment_intent"
+        else None
+    )
+    price_payload = (
+        cast(StripePricePayload, object_payload) if object_type == "price" else None
+    )
+    product_payload = (
+        cast(StripeProductPayload, object_payload) if object_type == "product" else None
+    )
+    subscription_payload = (
+        cast(StripeSubscriptionPayload, object_payload)
+        if object_type == "subscription"
+        else None
+    )
 
     stripe_customer_id = extract_customer_id(payload_data)
     stripe_object = config.BILLING_STRIPE_OBJECT(
@@ -550,6 +578,14 @@ async def _reload_stripe_object(
         livemode=bool(payload_data.get("livemode", request.livemode)),
         api_version=api_version,
         generic_payload=None,
+        charge=charge_payload,
+        checkout_session=checkout_session_payload,
+        customer=customer_payload,
+        invoice=invoice_payload,
+        payment_intent=payment_intent_payload,
+        price=price_payload,
+        product=product_payload,
+        subscription=subscription_payload,
         stripe_customer_id=stripe_customer_id,
         internal_user_id=extract_internal_user_id(payload_data),
         sync_status=SyncStatus.CLEAN,
@@ -563,7 +599,6 @@ async def _reload_stripe_object(
         remote_created_at=to_datetime(payload_data.get("created")),
         remote_deleted_at=now if payload_data.get("deleted") else None,
         updated_at=now,
-        **payload_fields,
     )
     await db_connection.upsert(
         [stripe_object],
