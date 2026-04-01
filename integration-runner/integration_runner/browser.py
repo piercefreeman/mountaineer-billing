@@ -115,12 +115,18 @@ def _postal_code_locator_factories() -> list[LocatorFactory]:
     ]
 
 
-def _card_payment_method_locator_factories() -> list[LocatorFactory]:
+def _card_payment_method_button_locator_factories() -> list[LocatorFactory]:
     return [
+        lambda scope: scope.locator("button[data-testid='card-accordion-item-button']"),
         lambda scope: scope.get_by_role(
             "button", name=re.compile(r"pay with card", re.I)
         ),
         lambda scope: scope.locator("button[aria-label='Pay with card']"),
+    ]
+
+
+def _card_payment_method_radio_locator_factories() -> list[LocatorFactory]:
+    return [
         lambda scope: scope.get_by_label(re.compile(r"^card$", re.I)),
         lambda scope: scope.locator("#payment-method-accordion-item-title-card"),
         lambda scope: scope.locator(
@@ -227,14 +233,23 @@ async def _select_card_payment_method(page: Any) -> None:
     if existing_card_field is not None:
         return
 
-    locator = await _find_first_visible_locator(
+    button_locator = await _find_first_visible_locator(
         page,
-        _card_payment_method_locator_factories(),
+        _card_payment_method_button_locator_factories(),
     )
-    if locator is None:
+    if button_locator is not None:
+        await button_locator.click(force=True)
+        await page.wait_for_timeout(PAYMENT_METHOD_SETTLE_DELAY_MS)
         return
 
-    await locator.click()
+    radio_locator = await _find_first_visible_locator(
+        page,
+        _card_payment_method_radio_locator_factories(),
+    )
+    if radio_locator is None:
+        return
+
+    await radio_locator.click(force=True)
     await page.wait_for_timeout(PAYMENT_METHOD_SETTLE_DELAY_MS)
 
 

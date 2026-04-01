@@ -130,5 +130,5 @@ async def test_select_card_payment_method_clicks_card_option_button() -> None:
         await _select_card_payment_method(fake_page)
 
     assert mock_find_locator.await_count == 2
-    fake_locator.click.assert_awaited_once_with()
+    fake_locator.click.assert_awaited_once_with(force=True)
     fake_page.wait_for_timeout.assert_awaited_once_with(250)
