@@ -30,25 +30,4 @@ def test_billing_models_accepts_nested_model_config() -> None:
 
     assert config.BILLING_MODELS.USER is models.User
     assert config.BILLING_MODELS.PRODUCT_PRICE is models.ProductPrice
-    assert config.BILLING_USER is models.User
-    assert config.BILLING_PRODUCT_PRICE is models.ProductPrice
-
-
-def test_billing_models_accepts_legacy_flat_model_fields() -> None:
-    config = BillingConfig(
-        **get_common_billing_config_kwargs(),
-        BILLING_USER=models.User,
-        BILLING_PRODUCT_PRICE=models.ProductPrice,
-        BILLING_RESOURCE_ACCESS=models.ResourceAccess,
-        BILLING_SUBSCRIPTION=models.Subscription,
-        BILLING_METERED_USAGE=models.MeteredUsage,
-        BILLING_PAYMENT=models.Payment,
-        BILLING_CHECKOUT_SESSION=models.CheckoutSession,
-        BILLING_STRIPE_EVENT=models.StripeEvent,
-        BILLING_STRIPE_OBJECT=models.StripeObject,
-        BILLING_PROJECTION_STATE=models.BillingProjectionState,
-    )
-
-    assert config.BILLING_MODELS.USER is models.User
-    assert config.BILLING_MODELS.PRODUCT_PRICE is models.ProductPrice
     assert config.BILLING_MODELS.PROJECTION_STATE is models.BillingProjectionState

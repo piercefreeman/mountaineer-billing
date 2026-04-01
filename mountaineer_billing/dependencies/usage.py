@@ -87,28 +87,30 @@ async def get_user_metered_usage_cycle(
 
     relevant_date_filters = []
     for start, end in relevant_date_windows:
-        current_filter = [config.BILLING_METERED_USAGE.metered_date >= start.date()]
+        current_filter = [
+            config.BILLING_MODELS.METERED_USAGE.metered_date >= start.date()
+        ]
         if end is not None:
             current_filter.append(
-                config.BILLING_METERED_USAGE.metered_date <= end.date()
+                config.BILLING_MODELS.METERED_USAGE.metered_date <= end.date()
             )
         relevant_date_filters.append(and_(*current_filter))
 
     metered_query = (
         select(
             (
-                config.BILLING_METERED_USAGE.metered_id,
-                func.sum(config.BILLING_METERED_USAGE.metered_usage),
+                config.BILLING_MODELS.METERED_USAGE.metered_id,
+                func.sum(config.BILLING_MODELS.METERED_USAGE.metered_usage),
             )
         )
         .where(
-            config.BILLING_METERED_USAGE.user_id == user.id,
+            config.BILLING_MODELS.METERED_USAGE.user_id == user.id,
             or_(
                 *relevant_date_filters,
-                config.BILLING_METERED_USAGE.is_perpetual == True,  # noqa: E712
+                config.BILLING_MODELS.METERED_USAGE.is_perpetual == True,  # noqa: E712
             ),
         )
-        .group_by(config.BILLING_METERED_USAGE.metered_id)
+        .group_by(config.BILLING_MODELS.METERED_USAGE.metered_id)
     )
 
     metered_results = await db_connection.exec(metered_query)
@@ -131,14 +133,14 @@ async def get_user_metered_usage_all_time(
     metered_query = (
         select(
             (
-                config.BILLING_METERED_USAGE.metered_id,
-                func.sum(config.BILLING_METERED_USAGE.metered_usage),
+                config.BILLING_MODELS.METERED_USAGE.metered_id,
+                func.sum(config.BILLING_MODELS.METERED_USAGE.metered_usage),
             )
         )
         .where(
-            config.BILLING_METERED_USAGE.user_id == user.id,
+            config.BILLING_MODELS.METERED_USAGE.user_id == user.id,
         )
-        .group_by(config.BILLING_METERED_USAGE.metered_id)
+        .group_by(config.BILLING_MODELS.METERED_USAGE.metered_id)
     )
 
     metered_results = await db_connection.exec(metered_query)

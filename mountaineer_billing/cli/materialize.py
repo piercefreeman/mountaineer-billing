@@ -25,8 +25,8 @@ class StripeSyncMaterialize:
         db_connection: DBConnection,
     ) -> MaterializeSyncSummary:
         users = await db_connection.exec(
-            select(self.config.BILLING_USER).where(
-                self.config.BILLING_USER.stripe_customer_id != None  # noqa: E711
+            select(self.config.BILLING_MODELS.USER).where(
+                self.config.BILLING_MODELS.USER.stripe_customer_id != None  # noqa: E711
             )
         )
         summary = MaterializeSyncSummary(users_selected=len(users))

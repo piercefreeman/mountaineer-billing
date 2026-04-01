@@ -128,7 +128,7 @@ def checkout_builder(
         allow_promotion_codes: bool = False,
     ):
         # Determine what the user is purchasing
-        product_price_model = config.BILLING_PRODUCT_PRICE
+        product_price_model = config.BILLING_MODELS.PRODUCT_PRICE
         stripe_price_ids: list[str] = []
 
         ids_to_products = {
@@ -228,9 +228,9 @@ async def any_subscription(
     https://docs.stripe.com/billing/subscriptions/cancel
 
     """
-    subscription_query = select(config.BILLING_SUBSCRIPTION).where(
-        config.BILLING_SUBSCRIPTION.user_id == user.id,
-        config.BILLING_SUBSCRIPTION.stripe_status != StripeStatus.CANCELED,
+    subscription_query = select(config.BILLING_MODELS.SUBSCRIPTION).where(
+        config.BILLING_MODELS.SUBSCRIPTION.user_id == user.id,
+        config.BILLING_MODELS.SUBSCRIPTION.stripe_status != StripeStatus.CANCELED,
     )
     subscriptions = await db_connection.exec(subscription_query)
     return subscriptions[0] if subscriptions else None

@@ -28,18 +28,18 @@ async def get_user_resources(
     # Get all of the allowed resources for this user
     # We only count active resources
     resource_query = (
-        select(config.BILLING_RESOURCE_ACCESS)
+        select(config.BILLING_MODELS.RESOURCE_ACCESS)
         .where(
-            config.BILLING_RESOURCE_ACCESS.user_id == user.id,
+            config.BILLING_MODELS.RESOURCE_ACCESS.user_id == user.id,
         )
         .where(
             or_(
                 (
-                    config.BILLING_RESOURCE_ACCESS.ended_datetime == None  # noqa
+                    config.BILLING_MODELS.RESOURCE_ACCESS.ended_datetime == None  # noqa
                 ),
                 and_(
-                    config.BILLING_RESOURCE_ACCESS.ended_datetime != None,  # noqa
-                    config.BILLING_RESOURCE_ACCESS.ended_datetime  # type: ignore
+                    config.BILLING_MODELS.RESOURCE_ACCESS.ended_datetime != None,  # noqa
+                    config.BILLING_MODELS.RESOURCE_ACCESS.ended_datetime  # type: ignore
                     > datetime.now(timezone.utc),
                 ),
             )

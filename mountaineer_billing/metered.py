@@ -22,12 +22,12 @@ async def metered_atomic_increase(
 ) -> int:
     updated_metered_usage = await db_connection.conn.fetch(
         f"""
-        INSERT INTO "{config.BILLING_METERED_USAGE.get_table_name()}"
+        INSERT INTO "{config.BILLING_MODELS.METERED_USAGE.get_table_name()}"
         (id, metered_id, metered_date, is_perpetual, user_id, metered_usage, synced_usage, created_at, updated_at)
         VALUES
         ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (metered_id, metered_date, is_perpetual, user_id)
-        DO UPDATE SET metered_usage = "{config.BILLING_METERED_USAGE.get_table_name()}"."metered_usage" + $6
+        DO UPDATE SET metered_usage = "{config.BILLING_MODELS.METERED_USAGE.get_table_name()}"."metered_usage" + $6
         RETURNING metered_usage
         """,
         uuid4(),

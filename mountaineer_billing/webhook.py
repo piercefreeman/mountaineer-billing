@@ -79,7 +79,7 @@ async def stripe_webhook(
         extract_customer_id(raw_object_payload) if raw_object_payload else None
     )
 
-    stripe_event = config.BILLING_STRIPE_EVENT(
+    stripe_event = config.BILLING_MODELS.STRIPE_EVENT(
         stripe_event_id=stripe_event_id,
         stripe_event_type=stripe_event_type,
         stripe_object_id=stripe_object_id,
@@ -91,17 +91,17 @@ async def stripe_webhook(
     )
     upsert_results = await db_connection.upsert(
         [stripe_event],
-        conflict_fields=(config.BILLING_STRIPE_EVENT.stripe_event_id,),
+        conflict_fields=(config.BILLING_MODELS.STRIPE_EVENT.stripe_event_id,),
         update_fields=(
-            config.BILLING_STRIPE_EVENT.stripe_event_type,
-            config.BILLING_STRIPE_EVENT.stripe_object_id,
-            config.BILLING_STRIPE_EVENT.stripe_object_type,
-            config.BILLING_STRIPE_EVENT.stripe_customer_id,
-            config.BILLING_STRIPE_EVENT.livemode,
-            config.BILLING_STRIPE_EVENT.stripe_created_at,
-            config.BILLING_STRIPE_EVENT.payload,
+            config.BILLING_MODELS.STRIPE_EVENT.stripe_event_type,
+            config.BILLING_MODELS.STRIPE_EVENT.stripe_object_id,
+            config.BILLING_MODELS.STRIPE_EVENT.stripe_object_type,
+            config.BILLING_MODELS.STRIPE_EVENT.stripe_customer_id,
+            config.BILLING_MODELS.STRIPE_EVENT.livemode,
+            config.BILLING_MODELS.STRIPE_EVENT.stripe_created_at,
+            config.BILLING_MODELS.STRIPE_EVENT.payload,
         ),
-        returning_fields=(config.BILLING_STRIPE_EVENT.id,),
+        returning_fields=(config.BILLING_MODELS.STRIPE_EVENT.id,),
     )
     if not upsert_results:
         raise ValueError("Failed to persist validated Stripe event")
