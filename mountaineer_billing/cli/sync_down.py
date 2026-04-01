@@ -7,7 +7,10 @@ import stripe
 from iceaxe import DBConnection
 from pydantic import BaseModel, Field
 
-from mountaineer_billing.cli.sync_up import upsert_price_mapping_from_stripe_price
+from mountaineer_billing.cli.sync_up import (
+    HasPriceMappingData,
+    upsert_price_mapping_from_stripe_price,
+)
 from mountaineer_billing.config import BillingConfig
 from mountaineer_billing.daemons.materialize_subscriptions import (
     MaterializeSubscriptions,
@@ -137,9 +140,10 @@ class StripeSyncDown:
                 synced_count += 1
 
                 if endpoint.object_type == "price":
+                    price_payload = cast(HasPriceMappingData, typed_payload)
                     stored_mapping = await upsert_price_mapping_from_stripe_price(
                         config=self.config,
-                        remote_price=typed_payload,
+                        remote_price=price_payload,
                         db_connection=db_connection,
                     )
                     if stored_mapping:

@@ -234,10 +234,7 @@ The usual flow looks like this:
 4. Gate metered actions with `verify_capacity(...)`.
 5. Record successful usage with `record_metered_usage(...)`.
 
-After checkout completes, the webhook handler persists the Stripe event,
-refreshes the local `StripeObject` mirror, and rebuilds the user-facing billing
-tables like `Subscription`, `ResourceAccess`, and `Payment`. Your app should
-read those local tables and dependencies instead of polling Stripe directly.
+Here are some examples of common validations you'll want to run after the user has started their subscription.
 
 ### Start the checkout flow
 
@@ -246,12 +243,15 @@ checkout session for one or more `(product_id, price_id)` pairs from your local
 catalog.
 
 ```python
-from mountaineer import Depends
+from collections.abc import Awaitable, Callable
+
+from fastapi import APIRouter, Depends
 from mountaineer_billing import BillingDependencies
 from pydantic import BaseModel
-from waymark import action
 
 from myapp.enums import PriceID, ProductID
+
+router = APIRouter()
 
 
 class StartCheckoutRequest(BaseModel):
@@ -259,17 +259,20 @@ class StartCheckoutRequest(BaseModel):
     price_id: PriceID = PriceID.DEFAULT
 
 
-@action
+@router.post("/billing/checkout")
 async def start_checkout(
     request: StartCheckoutRequest,
-    build_checkout=Depends(BillingDependencies.checkout_builder),
-) -> str:
-    return await build_checkout(
+    build_checkout: Callable[..., Awaitable[str]] = Depends(
+        BillingDependencies.checkout_builder
+    ),
+) -> dict[str, str]:
+    checkout_url = await build_checkout(
         products=[(request.product_id, request.price_id)],
         success_url="https://myapp.com/billing/success",
         cancel_url="https://myapp.com/billing",
         allow_promotion_codes=True,
     )
+    return {"checkout_url": checkout_url}
 ```
 
 If the current user does not yet have a `stripe_customer_id`,
@@ -278,28 +281,21 @@ checkout session.
 
 ### Read local billing state
 
-Most product code needs to answer simple questions like "does this user have
-Pro?" or "should I show the manage subscription screen?".
-
-Use the projected local billing state for that:
-
-- `BillingDependencies.get_user_resources` returns the user's currently active
-  `ResourceAccess` rows
-- `BillingDependencies.any_subscription` returns a non-canceled subscription, if
-  one exists
-- `Payment`, `Subscription`, and `ResourceAccess` are the tables to read when
-  building billing pages and account summaries
+Most product code needs to verify users against the version of their subscription that they have, which lets you
+gate features behind their plan.
 
 ```python
 from mountaineer import Depends
-from mountaineer_billing import BillingDependencies
+from mountaineer_billing import BillingDependencies, ResourceAccess, Subscription
 
 from myapp.enums import ProductID
 
 
 async def billing_summary(
-    resources=Depends(BillingDependencies.get_user_resources),
-    subscription=Depends(BillingDependencies.any_subscription),
+    resources: list[ResourceAccess] = Depends(BillingDependencies.get_user_resources),
+    subscription: Subscription | None = Depends(
+        BillingDependencies.any_subscription
+    ),
 ) -> dict[str, bool]:
     has_pro = any(resource.product_id == ProductID.PRO for resource in resources)
 
@@ -315,7 +311,7 @@ For authenticated actions that consume quota, the normal pattern is:
 
 1. Reject the request if the user is already out of capacity.
 2. Record the usage as part of the same action.
-3. Let the dependency roll back the usage record if the action body fails.
+3. Let the dependency roll back the usage record if the action body fails. This will happen automatically if you use the record_metered_usage helper.
 
 ```python
 from mountaineer import Depends
@@ -349,10 +345,6 @@ async def generate_item(
     return await actually_generate_item(request.prompt)
 ```
 
-This is the core metered billing loop in the library. `verify_capacity(...)`
-answers "can the user still do this?", and `record_metered_usage(...)` debits
-usage only if the action succeeds.
-
 ### Bill a specific user from a worker or daemon
 
 Sometimes the action that should consume quota runs outside the current request
@@ -364,10 +356,9 @@ from uuid import UUID
 
 from iceaxe import DBConnection, select
 from iceaxe.mountaineer import DatabaseDependencies
-from mountaineer import CoreDependencies, Depends
-from mountaineer.dependencies import get_function_dependencies
+from mountaineer import CoreDependencies, Depends, dependency_override
 from mountaineer_auth import AuthDependencies
-from mountaineer_billing import BillingDependencies
+from mountaineer_billing import BillingDependencies, UserBillingMixin
 from pydantic import BaseModel
 from waymark import action
 
@@ -381,42 +372,35 @@ class BillForMeteredTypeRequest(BaseModel):
     bill_amount: int = 1
 
 
-@action
-async def bill_for_metered_type(
+async def get_user_from_metered_request(
     request: BillForMeteredTypeRequest,
     db_connection: DBConnection = Depends(DatabaseDependencies.get_db_connection),
     config: AppConfig = Depends(CoreDependencies.get_config_with_type(AppConfig)),
-) -> None:
+) -> UserBillingMixin:
     users = await db_connection.exec(
         select(config.BILLING_USER).where(config.BILLING_USER.id == request.user_id)
     )
     user = users[0] if users else None
     if not user:
         raise ValueError(f"Could not find user {request.user_id}")
+    return user
 
-    async def run_dependency(
-        verify_capacity: bool = Depends(
-            BillingDependencies.verify_capacity(
-                request.metered_id,
-                request.bill_amount,
-            )
-        ),
-        allocate_new_capacity: bool = Depends(
-            BillingDependencies.record_metered_usage(
-                request.metered_id,
-                request.bill_amount,
-            )
-        ),
-    ) -> bool:
-        return verify_capacity and allocate_new_capacity
 
-    async with get_function_dependencies(
-        callable=run_dependency,
-        dependency_overrides={
-            AuthDependencies.require_valid_user: lambda: user,
-        },
-    ) as values:
-        await run_dependency(**values)
+@action
+@dependency_override(
+    AuthDependencies.require_valid_user,
+    get_user_from_metered_request,
+)
+async def bill_for_metered_type(
+    request: BillForMeteredTypeRequest,
+    allocate_new_capacity: bool = Depends(
+        BillingDependencies.record_metered_usage(
+            request.metered_id,
+            request.bill_amount,
+        )
+    ),
+) -> bool:
+    return allocate_new_capacity
 ```
 
 We recommend a dedicated action for this kind of billing side effect because it
@@ -462,7 +446,7 @@ const PricingPage = (serverState: ServerState) => {
 }
 ```
 
-## Development
+## Testing Your Checkout
 
 While running in development mode, it's often necessary to receive Stripe webhook callbacks. Their CLI makes this pretty simple. Just login and point it at your local development server:
 
@@ -484,7 +468,11 @@ Expiration: Any future date
 CVC: Any 3 digits
 ```
 
-## Stripe schema generation
+## Development
+
+If you're looking to improve `mountaineer-billing`, clone it locally and explore the Makefile.
+
+### Stripe schema generation
 
 Stripe often bumps the version of their API to include additional data or restructure fields. Each project is versioned to a particular number and you can bump this to `latest` whenever you please. To support multiple versions of the API concurrently within `mountaineer-billing`, we compile their official OpenAPI schema into pydantic models that can be tested for cross-version compatibility. The goal is to keep our own logic the same across different versions and push the responsibility of validating this into the type definitions themselves.
 

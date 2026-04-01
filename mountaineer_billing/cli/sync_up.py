@@ -17,6 +17,7 @@ INTERNAL_ID_KEY = "internal_id"
 INTERNAL_PRODUCT_ID_KEY = "internal_product_id"
 INTERNAL_PRICE_ID_KEY = "internal_price_id"
 INTERNAL_FREQUENCY_KEY = "internal_frequency"
+RecurringInterval = Literal["day", "week", "month", "year"]
 
 
 @runtime_checkable
@@ -45,6 +46,18 @@ def stripe_resource_to_dict(value: object) -> object:
         return value.to_dict_recursive()
 
     return value
+
+
+def get_recurring_interval(frequency: PriceBillingInterval) -> RecurringInterval:
+    if frequency == PriceBillingInterval.DAY:
+        return "day"
+    if frequency == PriceBillingInterval.WEEK:
+        return "week"
+    if frequency == PriceBillingInterval.MONTH:
+        return "month"
+    if frequency == PriceBillingInterval.YEAR:
+        return "year"
+    raise ValueError(f"Unknown recurring billing interval: {frequency}")
 
 
 class MarketingFeature(BaseModel):
@@ -86,7 +99,7 @@ class RemotePrice(BaseModel):
     """
 
     class RecurringDefinition(BaseModel):
-        interval: Literal["day", "week", "month", "year"]
+        interval: RecurringInterval
         usage_type: Literal["licensed", "metered"]
 
     id: str | None = None
@@ -653,7 +666,7 @@ class BillingSync:
             PriceBillingInterval.YEAR,
         }:
             remote_recurring = RemotePrice.RecurringDefinition(
-                interval=price.frequency.value.lower(),  # type: ignore[arg-type]
+                interval=get_recurring_interval(price.frequency),
                 usage_type=(
                     "metered" if isinstance(product, MeteredProduct) else "licensed"
                 ),

@@ -2,14 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from importlib import import_module
-from typing import Any, TypeVar
+from inspect import Parameter, signature
+from typing import Any, TypeGuard, TypeVar
 
 import click
 from iceaxe import DBConnection
 from iceaxe.mountaineer import DatabaseConfig, DatabaseDependencies
 
 from mountaineer import Depends
-from mountaineer.config import get_config, register_config_in_context, unregister_config
+from mountaineer.config import (
+    ConfigBase,
+    get_config,
+    register_config_in_context,
+    unregister_config,
+)
 from mountaineer.dependencies import get_function_dependencies
 from mountaineer.io import async_to_sync
 
@@ -57,6 +63,38 @@ def import_symbol(import_path: str) -> object:
         ) from exc
 
 
+def is_zero_arg_factory(value: object) -> TypeGuard[Callable[[], object]]:
+    if not callable(value):
+        return False
+
+    try:
+        callable_signature = signature(value)
+    except (TypeError, ValueError):
+        return False
+
+    for parameter in callable_signature.parameters.values():
+        if (
+            parameter.kind
+            in {
+                Parameter.POSITIONAL_ONLY,
+                Parameter.POSITIONAL_OR_KEYWORD,
+                Parameter.KEYWORD_ONLY,
+            }
+            and parameter.default is Parameter.empty
+        ):
+            return False
+
+    return True
+
+
+def require_mountaineer_config(config: BillingConfig) -> ConfigBase:
+    if not isinstance(config, ConfigBase):
+        raise click.UsageError(
+            "Loaded config must also inherit from mountaineer.config.ConfigBase"
+        )
+    return config
+
+
 def load_sync_config(config_import_path: str | None) -> BillingConfig:
     if config_import_path is None:
         try:
@@ -74,7 +112,7 @@ def load_sync_config(config_import_path: str | None) -> BillingConfig:
             unregister_config()
             if isinstance(config_target, type):
                 raw_config = config_target()
-            elif callable(config_target):
+            elif is_zero_arg_factory(config_target):
                 raw_config = config_target()
             else:
                 raise click.UsageError(
@@ -86,6 +124,7 @@ def load_sync_config(config_import_path: str | None) -> BillingConfig:
         raise click.UsageError(
             f"Loaded config must inherit from BillingConfig, got {type(raw_config)!r}"
         )
+    require_mountaineer_config(raw_config)
     if not isinstance(raw_config, DatabaseConfig):
         raise click.UsageError(
             "Loaded config must also inherit from iceaxe.mountaineer.DatabaseConfig"
@@ -104,7 +143,7 @@ async def run_with_db_connection(
     ) -> ReturnValue:
         return await handler(db_connection)
 
-    with register_config_in_context(config):
+    with register_config_in_context(require_mountaineer_config(config)):
         async with get_function_dependencies(callable=dependency_wrapper) as deps:
             return await dependency_wrapper(**deps)
 
