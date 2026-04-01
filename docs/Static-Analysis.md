@@ -1,9 +1,23 @@
 # Stripe Types
 
-This project needs two things from Stripe payload typing that pull in opposite directions:
+Stripe provides an OpenAPI definition that lets clients generate native-language bindings for their objects. Which is great! Less great is that their API changes
+with some frequency and we want to statically prove that `mountaineer-billing` works across the whole set of APIs that we support. For this reason we basically
+want to always use a polymorphic definition of the Stripe values. Consider for subscriptions:
+
+```python
+fn has_right_subscription(subscription: StripeSubscription):
+    ...
+```
+
+Behind the scenes we actually have something like: `StripeSubscription = StripeSubscriptionV1 | StripeSubscriptionV2 | StripeSubscriptionV3 | etc.`.
+
+If we try to access a value on subscription that is only valid in some of these API versions, `ty` will throw an error and force us to build more robust
+access patterns for this field.
+
+Because of this polymorphic need, we need two things from Stripe payload typing that pull in opposite directions:
 
 1. Static type checking should see all supported Stripe API versions at once so our code is forced to stay compatible across versions.
-2. Runtime import cost should stay low, because eagerly importing every generated Stripe model package is expensive.
+2. Runtime import cost should stay low, because eagerly importing every generated Stripe model package is expensive because of the amount of helper objects they have as part of their API.
 
 Our solution is to separate the static typing story from the runtime validation story.
 
@@ -25,7 +39,7 @@ Those aliases represent payload families we actually store and operate on:
 
 The design goal is:
 
-- mypy / pyright should reason about all generated versions together
+- ty should reason about all generated versions together
 - runtime should only import the specific Stripe version needed for the payload being validated
 
 ## Why We Do Not Use A Normal `TypeAdapter`
@@ -90,7 +104,7 @@ On serialization, `LazyAdapter` adds `mountaineer_billing_api_version` back into
 
 ## Why Generated Models Use `defer_build=True`
 
-The generated model modules are post-processed so they import `BaseModel`, `RootModel`, and `Field` from a local `_deferred.py` shim instead of directly from Pydantic.
+We do a bit of post-processing in `generate_stripe_models.py` that isn't done by the default code generation pipeline. Specifically the generated model modules are post-processed so they import `BaseModel`, `RootModel`, and `Field` from a local `_deferred.py` shim instead of directly from Pydantic.
 
 That shim sets:
 
@@ -98,11 +112,11 @@ That shim sets:
 ConfigDict(defer_build=True)
 ```
 
-The point is not to avoid importing the selected module. The point is to avoid eagerly building every nested validator graph inside that module during import. We still load the chosen version lazily, but we also keep the selected module's startup cost lower.
+This lets us avoid eagerly building every nested validator graph inside that module during import. We still load the chosen version lazily, but we also keep the selected module's startup cost lower. We then defer until the lazy logic above.
 
 ## Schema Pruning Before Codegen
 
-We do not generate Python models from the entire Stripe OpenAPI schema.
+As an additional saver of the overall size of our generated code, we don't generate Python models from the entire Stripe OpenAPI schema.
 
 Before `datamodel-code-generator` runs, `scripts/generate_stripe_models.py` calls `_prune_schema_for_codegen(...)`. That function:
 
@@ -111,30 +125,9 @@ Before `datamodel-code-generator` runs, `scripts/generate_stripe_models.py` call
 - keeps only reachable `components.schemas`
 - clears `paths`, because endpoint descriptions are not needed for payload validation
 
-This is an intentional scope reduction. We are not trying to provide a complete Stripe SDK. We are trying to validate and store the subset of Stripe object families that our billing system actually uses.
-
 That keeps the generated code:
 
 - smaller
 - faster to import
 - easier to regenerate
 - easier to reason about during cross-version compatibility work
-
-## What Static Checking Buys Us
-
-The important architectural bet here is that application code should be written against the intersection of fields that are safe across the versions we support.
-
-Because the type aliases expand to unions during static analysis, code that depends on fields or shapes that are not stable across versions should become visible during type checking instead of failing later when a different Stripe API version arrives.
-
-In other words:
-
-- runtime chooses one concrete version lazily
-- static analysis forces us to respect all supported versions together
-
-## Relevant Files
-
-- `scripts/generate_stripe_models.py`: collects Stripe schema revisions, prunes schema scope, generates model packages, and renders `stripe/types.py`
-- `mountaineer_billing/type_helpers.py`: lazy validation and serialization plumbing
-- `mountaineer_billing/stripe/types.py`: runtime registry plus `TYPE_CHECKING` unions
-- `mountaineer_billing/__tests__/test_generate_stripe_models_script.py`: generation invariants
-- `mountaineer_billing/__tests__/test_stripe_types.py`: runtime round-trip and performance regression coverage

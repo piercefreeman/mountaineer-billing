@@ -8,6 +8,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "click>=8.1.0",
     "stripe>=12.1.0",
     "iceaxe>=0.0.0,<1.0.0",
     "grpcio>=1.71.2",
@@ -15,6 +16,9 @@ dependencies = [
     "mountaineer",
     "mountaineer-auth",
 ]
+
+[project.scripts]
+billing-sync = "mountaineer_billing.cli.main:billing_sync"
 
 [build-system]
 requires = ["hatchling"]

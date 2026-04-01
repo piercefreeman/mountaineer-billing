@@ -180,90 +180,256 @@ class AppConfig(ConfigBase, AuthConfig, BillingConfig, DatabaseConfig):
     BILLING_METERED = BILLING_METERED
 ```
 
-5. Mount the webhook router and create a small CLI command to sync your local
-   plan definitions into Stripe:
+5. Mount the webhook router:
 
 ```python
-from click import command, option
-from iceaxe import DBConnection
-from iceaxe.mountaineer import DatabaseDependencies
+from mountaineer_billing.webhook import router as billing_router
 
-from mountaineer import Depends
-from mountaineer.dependencies import get_function_dependencies
-from mountaineer.io import async_to_sync
-
-from mountaineer_billing import get_billing_router
-from mountaineer_billing.sync import BillingSync
-
-controller.app.include_router(get_billing_router())
-
-
-@command()
-@option("--dry-run", is_flag=True, default=False)
-@async_to_sync
-async def sync_plans(dry_run: bool) -> None:
-    config = AppConfig()  # type: ignore
-
-    async def _sync(
-        db_connection: DBConnection = Depends(DatabaseDependencies.get_db_connection),
-    ) -> None:
-        await BillingSync(config=config).sync_products(
-            products=BILLING_PRODUCTS,
-            db_connection=db_connection,
-            dry_run=dry_run,
-        )
-
-    async with get_function_dependencies(callable=_sync) as deps:
-        await _sync(**deps)
+controller.app.include_router(billing_router)
 ```
 
 After that:
 
 - Include these tables in your normal Iceaxe `createdb` / migration flow.
-- Add a CLI entry point for `sync-plans` in your `pyproject.toml`.
+- Use the built-in `billing-sync` CLI.
 - In Stripe, configure a webhook for
   `/external/billing/webhooks/stripe` and set the resulting signing secret as
   `STRIPE_WEBHOOK_SECRET`.
-- Run `sync-plans --dry-run`, then `sync-plans`, to push your local catalog to
-  Stripe and store the resulting price mappings locally.
 
-At runtime, use `BillingDependencies` in your routes and Waymark actions for
-common operations like `verify_capacity`, `record_metered_usage`,
-`checkout_builder`, and `customer_session_authorization`.
+6. Sync your billing catalog and local Stripe mirror:
 
-## Design Details
+```bash
+# Preview catalog changes without writing to Stripe
+billing-sync up --config your_app.config:AppConfig --dry-run
 
-We support subscription-based billing, metered billing, and one-time payments. Each billing is expected to unlock some access (binary on/off) or some resources (metered). We use Stripe as the payment processor. We do not intend for this plugin to be used for the purchasing of physical goods or one-off digital goods. It fits more into a SaaS model of user linked billing.
+# Push local BILLING_PRODUCTS into Stripe and upsert local price mappings
+billing-sync up --config your_app.config:AppConfig
 
-The following data hierarchy is used by Stripe to model billing objects:
-
-```
-- Customer
-
-- Product
-    - A given offering, grants access to a specific set of resources
-
-- Pricing (legacy name: Plan)
-    - Defines the price and how it is billed
-    - Could be onetime or recurring
-    - Could be per month of per year
-    - Links to one single product. At its core, a Price sells the same _thing_ at different pricepoints.
-
-- Subscription (recurring access to a product)
-    - Links a given pricing to a customer
-    - Supports multiple prices in the subscription line-item, and therefore multiple products
+# Mirror supported Stripe objects back into the local StripeObject table
+billing-sync down --config your_app.config:AppConfig
 ```
 
-We use a simpler hierarchy that's intended to more explicitly hook into the questions that we care about during runtime:
+If you prefer not to repeat the config path each time, set
+`MOUNTAINEER_BILLING_CONFIG`:
 
-1. Is the user allowed to access this resource?
-1. Does the user have quota remaining for this resource, for instance to create some object
+```bash
+export MOUNTAINEER_BILLING_CONFIG=your_app.config:AppConfig
 
-## Stripe customers
+billing-sync up --dry-run
+billing-sync up
+billing-sync down
+```
 
-We assume that every checkout session started through `mountaineer-billing` that calls out to Stripe will reference an existing stripe user. We do **not** support Stripe->Mountaineer user creation at this time.
+## Using Billing
 
-If you're using a pricing table, for instance, this will require you to inject a customer-session-client-secret key:
+Once your catalog is synced and Stripe is sending webhooks to
+`/external/billing/webhooks/stripe`, you can treat billing as a local runtime
+problem instead of a Stripe API problem.
+
+The usual flow looks like this:
+
+1. Start checkout for a plan or one-time pack.
+2. Let the webhook pipeline materialize the user's local billing state.
+3. Read local billing projections to decide what the user can access.
+4. Gate metered actions with `verify_capacity(...)`.
+5. Record successful usage with `record_metered_usage(...)`.
+
+Here are some examples of common validations you'll want to run after the user has started their subscription.
+
+### Start the checkout flow
+
+`BillingDependencies.checkout_builder` returns a helper that creates a Stripe
+checkout session for one or more `(product_id, price_id)` pairs from your local
+catalog.
+
+```python
+from collections.abc import Awaitable, Callable
+
+from fastapi import APIRouter, Depends
+from mountaineer_billing import BillingDependencies
+from pydantic import BaseModel
+
+from myapp.enums import PriceID, ProductID
+
+router = APIRouter()
+
+
+class StartCheckoutRequest(BaseModel):
+    product_id: ProductID
+    price_id: PriceID = PriceID.DEFAULT
+
+
+@router.post("/billing/checkout")
+async def start_checkout(
+    request: StartCheckoutRequest,
+    build_checkout: Callable[..., Awaitable[str]] = Depends(
+        BillingDependencies.checkout_builder
+    ),
+) -> dict[str, str]:
+    checkout_url = await build_checkout(
+        products=[(request.product_id, request.price_id)],
+        success_url="https://myapp.com/billing/success",
+        cancel_url="https://myapp.com/billing",
+        allow_promotion_codes=True,
+    )
+    return {"checkout_url": checkout_url}
+```
+
+If the current user does not yet have a `stripe_customer_id`,
+`checkout_builder` will create the Stripe customer before it creates the
+checkout session.
+
+### Read local billing state
+
+Most product code needs to verify users against the version of their subscription that they have, which lets you
+gate features behind their plan.
+
+```python
+from mountaineer import Depends
+from mountaineer_billing import BillingDependencies, ResourceAccess, Subscription
+
+from myapp.enums import ProductID
+
+
+async def billing_summary(
+    resources: list[ResourceAccess] = Depends(BillingDependencies.get_user_resources),
+    subscription: Subscription | None = Depends(
+        BillingDependencies.any_subscription
+    ),
+) -> dict[str, bool]:
+    has_pro = any(resource.product_id == ProductID.PRO for resource in resources)
+
+    return {
+        "has_pro": has_pro,
+        "has_subscription": subscription is not None,
+    }
+```
+
+### Gate and bill metered actions
+
+For authenticated actions that consume quota, the normal pattern is:
+
+1. Reject the request if the user is already out of capacity.
+2. Record the usage as part of the same action.
+3. Let the dependency roll back the usage record if the action body fails. This will happen automatically if you use the record_metered_usage helper.
+
+```python
+from mountaineer import Depends
+from mountaineer_billing import BillingDependencies
+from pydantic import BaseModel
+from waymark import action
+
+from myapp.enums import MeteredID
+
+
+class GenerateItemRequest(BaseModel):
+    prompt: str
+
+
+@action
+async def generate_item(
+    request: GenerateItemRequest,
+    _: bool = Depends(
+        BillingDependencies.verify_capacity(
+            MeteredID.ITEM_GENERATION,
+            1,
+        )
+    ),
+    __: bool = Depends(
+        BillingDependencies.record_metered_usage(
+            MeteredID.ITEM_GENERATION,
+            1,
+        )
+    ),
+) -> str:
+    return await actually_generate_item(request.prompt)
+```
+
+### Bill a specific user from a worker or daemon
+
+Sometimes the action that should consume quota runs outside the current request
+context. In that case, fetch the user yourself and evaluate the billing
+dependencies with `get_function_dependencies(...)`.
+
+```python
+from uuid import UUID
+
+from iceaxe import DBConnection, select
+from iceaxe.mountaineer import DatabaseDependencies
+from mountaineer import CoreDependencies, Depends, dependency_override
+from mountaineer_auth import AuthDependencies
+from mountaineer_billing import BillingDependencies, UserBillingMixin
+from pydantic import BaseModel
+from waymark import action
+
+from myapp.config import AppConfig
+from myapp.enums import MeteredID
+
+
+class BillForMeteredTypeRequest(BaseModel):
+    user_id: UUID
+    metered_id: MeteredID
+    bill_amount: int = 1
+
+
+async def get_user_from_metered_request(
+    request: BillForMeteredTypeRequest,
+    db_connection: DBConnection = Depends(DatabaseDependencies.get_db_connection),
+    config: AppConfig = Depends(CoreDependencies.get_config_with_type(AppConfig)),
+) -> UserBillingMixin:
+    users = await db_connection.exec(
+        select(config.BILLING_USER).where(config.BILLING_USER.id == request.user_id)
+    )
+    user = users[0] if users else None
+    if not user:
+        raise ValueError(f"Could not find user {request.user_id}")
+    return user
+
+
+@action
+@dependency_override(
+    AuthDependencies.require_valid_user,
+    get_user_from_metered_request,
+)
+async def bill_for_metered_type(
+    request: BillForMeteredTypeRequest,
+    allocate_new_capacity: bool = Depends(
+        BillingDependencies.record_metered_usage(
+            request.metered_id,
+            request.bill_amount,
+        )
+    ),
+) -> bool:
+    return allocate_new_capacity
+```
+
+We recommend a dedicated action for this kind of billing side effect because it
+keeps retries explicit and separates "do the work" from "charge quota for the
+work".
+
+### Use hosted pricing tables or buy buttons
+
+Every checkout flow in `mountaineer-billing` assumes you already have a local
+user and want to attach Stripe billing to that user. If you're using Stripe
+pricing tables or buy buttons, inject a customer session client secret with
+`BillingDependencies.customer_session_authorization(...)`:
+
+```python
+from mountaineer import Depends
+from mountaineer_billing import BillingDependencies
+
+
+async def render_pricing_page(
+    customer_session_client_secret: str = Depends(
+        BillingDependencies.customer_session_authorization(["pricing_table"])
+    ),
+):
+    return {
+        "customer_session_client_secret": customer_session_client_secret,
+    }
+```
+
+Then pass that secret into the frontend component:
 
 ```tsx
 const PricingPage = (serverState: ServerState) => {
@@ -280,7 +446,7 @@ const PricingPage = (serverState: ServerState) => {
 }
 ```
 
-## Development
+## Testing Your Checkout
 
 While running in development mode, it's often necessary to receive Stripe webhook callbacks. Their CLI makes this pretty simple. Just login and point it at your local development server:
 
@@ -302,7 +468,11 @@ Expiration: Any future date
 CVC: Any 3 digits
 ```
 
-## Stripe schema generation
+## Development
+
+If you're looking to improve `mountaineer-billing`, clone it locally and explore the Makefile.
+
+### Stripe schema generation
 
 Stripe often bumps the version of their API to include additional data or restructure fields. Each project is versioned to a particular number and you can bump this to `latest` whenever you please. To support multiple versions of the API concurrently within `mountaineer-billing`, we compile their official OpenAPI schema into pydantic models that can be tested for cross-version compatibility. The goal is to keep our own logic the same across different versions and push the responsibility of validating this into the type definitions themselves.
 
