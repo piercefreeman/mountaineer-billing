@@ -27,6 +27,7 @@ The stack now includes:
 
 - `postgres` for the integration database on `localhost:5436`
 - `daemon` for the Waymark workflow bridge and worker loop
+- `daemon` webapp on `localhost:24119` when `WAYMARK_WEBAPP_ENABLED=true`
 - `app-server` for `/external/billing/webhooks/stripe` on `localhost:8000`
 - `stripe-cli` for `stripe listen --forward-to ...`
 - `runner` as a warmed container with Playwright and `Xvfb`, ready for `docker compose exec`

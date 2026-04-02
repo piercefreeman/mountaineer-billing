@@ -21,7 +21,12 @@ from integration_runner.browser import (
     run_checkout_browser,
 )
 from integration_runner.config import IntegrationRunnerConfig, get_runner_config
-from integration_runner.models import RUNNER_TABLE_MODELS, User
+from integration_runner.models import (
+    RUNNER_TABLE_MODELS,
+    RUNNER_TABLE_NAMES,
+    RUNNER_TYPE_NAMES,
+    User,
+)
 from mountaineer_billing import BillingDependencies
 from mountaineer_billing.cli.main import run_with_db_connection
 from mountaineer_billing.cli.sync_up import BillingSync
@@ -100,38 +105,15 @@ async def _ensure_local_schema(
 async def _reset_local_schema(
     db_connection: DBConnection,
 ) -> None:
-    await db_connection.conn.execute(
-        """
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """
+    runner_tables = ", ".join(
+        f'"{table_name}"' for table_name in sorted(RUNNER_TABLE_NAMES)
     )
+    await db_connection.conn.execute(f"DROP TABLE IF EXISTS {runner_tables} CASCADE;")
 
-    await db_connection.conn.execute(
-        """
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (
-                SELECT typname
-                FROM pg_type
-                WHERE typtype = 'e'
-                AND typnamespace = (
-                    SELECT oid
-                    FROM pg_namespace
-                    WHERE nspname = 'public'
-                )
-            ) LOOP
-                EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(r.typname) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """
+    runner_types = ", ".join(
+        f'"{type_name}"' for type_name in sorted(RUNNER_TYPE_NAMES)
     )
+    await db_connection.conn.execute(f"DROP TYPE IF EXISTS {runner_types} CASCADE;")
 
 
 class AutoApproveBillingSync(BillingSync):

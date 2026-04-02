@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
@@ -77,9 +78,21 @@ def invoice_line_items(payload: StripeInvoicePayload) -> list[Any]:
 
 
 def line_item_price_id(payload: object) -> str | None:
-    return nested_stripe_id(getattr(payload, "price", None)) or nested_stripe_id(
+    price_id = nested_stripe_id(getattr(payload, "price", None)) or nested_stripe_id(
         getattr(payload, "plan", None)
     )
+    if price_id:
+        return price_id
+
+    pricing = getattr(payload, "pricing", None)
+    if pricing is None:
+        return None
+
+    price_details = getattr(pricing, "price_details", None)
+    if price_details is None:
+        return None
+
+    return nested_stripe_id(price_details.price)
 
 
 def line_item_product_id(payload: object) -> str | None:
@@ -89,7 +102,69 @@ def line_item_product_id(payload: object) -> str | None:
         return product_id
 
     plan = getattr(payload, "plan", None)
-    return nested_stripe_id(getattr(plan, "product", None))
+    product_id = nested_stripe_id(getattr(plan, "product", None))
+    if product_id:
+        return product_id
+
+    pricing = getattr(payload, "pricing", None)
+    if pricing is None:
+        return None
+
+    price_details = getattr(pricing, "price_details", None)
+    if price_details is None:
+        return None
+
+    return nested_stripe_id(price_details.product)
+
+
+def line_item_subscription_id(payload: object) -> str | None:
+    subscription_id = nested_stripe_id(getattr(payload, "subscription", None))
+    if subscription_id:
+        return subscription_id
+
+    parent = getattr(payload, "parent", None)
+    if parent is None:
+        return None
+
+    subscription_item_details = getattr(parent, "subscription_item_details", None)
+    if subscription_item_details is None:
+        return None
+
+    return nested_stripe_id(subscription_item_details.subscription)
+
+
+def line_item_unit_amount(payload: object) -> int | None:
+    price = getattr(payload, "price", None)
+    unit_amount = getattr(price, "unit_amount", None)
+    if isinstance(unit_amount, int):
+        return unit_amount
+
+    pricing = getattr(payload, "pricing", None)
+    if pricing is None:
+        return None
+
+    unit_amount_decimal = getattr(pricing, "unit_amount_decimal", None)
+    if isinstance(unit_amount_decimal, int):
+        return unit_amount_decimal
+
+    if isinstance(unit_amount_decimal, Decimal):
+        if unit_amount_decimal == unit_amount_decimal.to_integral_value():
+            return int(unit_amount_decimal)
+
+    return None
+
+
+def invoice_is_paid(payload: StripeInvoicePayload) -> bool:
+    if payload is None:
+        return False
+
+    # `paid` existed on older invoice payloads, while newer versions reliably
+    # expose the invoice lifecycle through `status`.
+    paid = getattr(payload, "paid", None)
+    if isinstance(paid, bool):
+        return paid
+
+    return payload.status == "paid"
 
 
 def safe_stripe_status(value: object) -> StripeStatus | None:
@@ -457,7 +532,7 @@ async def build_materialized_subscription_state(
 
     seen_payment_keys: set[tuple[str, str, str | None]] = set()
     for payload in context.invoices:
-        if payload is None or not getattr(payload, "paid", False):
+        if payload is None or not invoice_is_paid(payload):
             continue
 
         stripe_invoice_id = payload.id
@@ -470,6 +545,7 @@ async def build_materialized_subscription_state(
             getattr(payload, "subscription", None)
         )
         for line_item in invoice_line_items(payload):
+            line_item_subscription = line_item_subscription_id(line_item)
             price_id = line_item_price_id(line_item)
             if not price_id:
                 continue
@@ -479,12 +555,7 @@ async def build_materialized_subscription_state(
                 continue
             seen_payment_keys.add(payment_key)
 
-            unit_amount = None
-            price_value = getattr(line_item, "price", None)
-            raw_unit_amount = getattr(price_value, "unit_amount", None)
-            if isinstance(raw_unit_amount, int):
-                unit_amount = raw_unit_amount
-
+            unit_amount = line_item_unit_amount(line_item)
             quantity = getattr(line_item, "quantity", None)
             if not isinstance(quantity, int) or quantity == 0:
                 quantity = 1
@@ -503,7 +574,9 @@ async def build_materialized_subscription_state(
                     price_ratio=(
                         paid_amount / total_price_amount if total_price_amount else 1.0
                     ),
-                    stripe_subscription_id=stripe_subscription_id,
+                    stripe_subscription_id=(
+                        line_item_subscription or stripe_subscription_id
+                    ),
                     stripe_customer_id=context.stripe_customer_id,
                     stripe_price_id=price_id,
                     stripe_invoice_id=stripe_invoice_id,
@@ -532,12 +605,7 @@ async def build_materialized_subscription_state(
             if payment_key not in seen_payment_keys:
                 seen_payment_keys.add(payment_key)
 
-                unit_amount = None
-                price_value = getattr(line_item, "price", None)
-                raw_unit_amount = getattr(price_value, "unit_amount", None)
-                if isinstance(raw_unit_amount, int):
-                    unit_amount = raw_unit_amount
-
+                unit_amount = line_item_unit_amount(line_item)
                 quantity = getattr(line_item, "quantity", None)
                 if not isinstance(quantity, int) or quantity == 0:
                     quantity = 1

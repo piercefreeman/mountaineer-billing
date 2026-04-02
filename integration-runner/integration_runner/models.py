@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from iceaxe.schemas.db_memory_serializer import DatabaseMemorySerializer
+from iceaxe.schemas.db_stubs import DBType
+
 from mountaineer_auth import models as auth_models
 
 from mountaineer_billing import models
@@ -129,3 +132,10 @@ RUNNER_TABLE_MODELS = [
     StripeObject,
     BillingProjectionState,
 ]
+
+RUNNER_TABLE_NAMES = frozenset(model.get_table_name() for model in RUNNER_TABLE_MODELS)
+RUNNER_TYPE_NAMES = frozenset(
+    obj.name
+    for obj, _ in DatabaseMemorySerializer().delegate(RUNNER_TABLE_MODELS)
+    if isinstance(obj, DBType)
+)

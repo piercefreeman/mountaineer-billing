@@ -301,6 +301,7 @@ async def test_reset_local_schema_drops_tables_and_enum_types() -> None:
     table_reset_sql = execute.await_args_list[0].args[0]
     type_reset_sql = execute.await_args_list[1].args[0]
     assert "DROP TABLE IF EXISTS" in table_reset_sql
-    assert "schemaname = 'public'" in table_reset_sql
+    assert '"billingprojectionstate"' in table_reset_sql
+    assert '"workflow_versions"' not in table_reset_sql
     assert "DROP TYPE IF EXISTS" in type_reset_sql
-    assert "typtype = 'e'" in type_reset_sql
+    assert '"syncstatus"' in type_reset_sql

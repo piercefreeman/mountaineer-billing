@@ -39,7 +39,11 @@ services:
       WAYMARK_DATABASE_URL: postgresql://mountaineer_billing:mysecretpassword@postgres:5432/mountaineer_billing_test_db
       WAYMARK_BRIDGE_GRPC_ADDR: 0.0.0.0:24117
       WAYMARK_WORKER_GRPC_ADDR: 0.0.0.0:24118
+      WAYMARK_WEBAPP_ENABLED: ${WAYMARK_WEBAPP_ENABLED:-true}
+      WAYMARK_WEBAPP_ADDR: 0.0.0.0:24119
       WAYMARK_USER_MODULE: integration_runner.daemon_bootstrap
+    ports:
+      - "24119:24119"
     healthcheck:
       test:
         [

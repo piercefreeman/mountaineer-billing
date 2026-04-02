@@ -233,7 +233,9 @@ creates or reuses `checkout-runner@example.com`, syncs the demo products to
 Stripe, types Stripe's standard `4242` test card, and saves video output under
 `artifacts/integration-runner/videos`. The Docker stack also exposes an
 `app-server` service for webhook processing and a `daemon` service for the
-Waymark-backed billing workflows. If you want to change the product, URLs, card
+Waymark-backed billing workflows. The daemon can also expose the embedded
+Waymark webapp on `localhost:24119` by setting `WAYMARK_WEBAPP_ENABLED=true`.
+If you want to change the product, URLs, card
 data, browser behavior, or database settings, override the
 `INTEGRATION_RUNNER_*` and `POSTGRES_*` environment variables exposed by that
 config.

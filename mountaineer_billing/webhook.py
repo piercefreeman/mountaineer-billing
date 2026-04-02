@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any, cast
 
 import stripe
 from fastapi import APIRouter, Depends, Request
@@ -30,6 +32,21 @@ else:
 router = APIRouter(prefix="/external/billing")
 
 
+def _json_safe_webhook_value(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe_webhook_value(nested_value)
+            for key, nested_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_json_safe_webhook_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_webhook_value(item) for item in value]
+    return value
+
+
 @router.post("/webhooks/stripe")
 async def stripe_webhook(
     request: Request,
@@ -56,7 +73,10 @@ async def stripe_webhook(
         LOGGER.error(f"Invalid stripe webhook signature: {e}: {signature_header}")
         raise e
 
-    event_payload = stripe_object_to_dict(event)
+    event_payload = cast(
+        dict[str, Any],
+        _json_safe_webhook_value(stripe_object_to_dict(event)),
+    )
     stripe_event_id = event_payload.get("id")
     stripe_event_type = event_payload.get("type")
     if not isinstance(stripe_event_id, str) or not isinstance(stripe_event_type, str):
