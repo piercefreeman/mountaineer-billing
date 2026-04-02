@@ -1,11 +1,12 @@
 from collections.abc import Mapping
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import stripe
 from fastapi import APIRouter, Depends, Request
 from iceaxe import DBConnection
 from iceaxe.mountaineer import DatabaseDependencies
+from stripe import SignatureVerificationError
 
 from mountaineer import CoreDependencies
 
@@ -18,16 +19,6 @@ from mountaineer_billing.daemons.reload_stripe_object import (
     to_datetime,
 )
 from mountaineer_billing.logging import LOGGER
-
-if TYPE_CHECKING:
-    # More recent versions of stripe have refactored errors to be importable
-    # from the main `stripe` package and throw a warning if we try to import from
-    # the deprecated `stripe.error` package. However our typeshed definitions don't
-    # expose errors from the main package, so we need to import from the deprecated
-    # package.
-    from stripe.error import SignatureVerificationError
-else:
-    from stripe import SignatureVerificationError
 
 router = APIRouter(prefix="/external/billing")
 

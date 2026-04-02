@@ -90,7 +90,7 @@ def customer_session_authorization(
         ),
     ):
         # @pierce 03/01/2024: CustomerSession is not provided in the typeshed definitions for stripe
-        customer_session = stripe.CustomerSession.create(  # type: ignore
+        customer_session = stripe.CustomerSession.create(
             customer=stripe_customer_id,
             # Enabled components always follow the same syntax
             components={
