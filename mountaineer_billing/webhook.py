@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any, cast
 
 import stripe
 from fastapi import APIRouter, Depends, Request
@@ -30,6 +32,35 @@ else:
 router = APIRouter(prefix="/external/billing")
 
 
+def _json_safe_webhook_value(value: Any) -> Any:
+    """Convert Stripe webhook payload values into plain JSON-safe primitives.
+
+    Stripe's Python SDK can surface ``Decimal`` instances inside nested event
+    payloads such as invoice line pricing data. Pydantic would serialize those
+    values correctly in ``mode="json"``, but this webhook path does not persist
+    a Pydantic model. We first convert the Stripe event into a plain nested
+    Python ``dict`` via ``stripe_object_to_dict(...)`` and then store that raw
+    payload in ``StripeEvent.payload`` as JSON. Without this normalization,
+    those ``Decimal`` values are rejected by the normal JSON encoder as not
+    serializable.
+
+    We stringify decimals instead of coercing to float so we preserve the exact
+    value that Stripe sent.
+    """
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe_webhook_value(nested_value)
+            for key, nested_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_json_safe_webhook_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_webhook_value(item) for item in value]
+    return value
+
+
 @router.post("/webhooks/stripe")
 async def stripe_webhook(
     request: Request,
@@ -56,7 +87,10 @@ async def stripe_webhook(
         LOGGER.error(f"Invalid stripe webhook signature: {e}: {signature_header}")
         raise e
 
-    event_payload = stripe_object_to_dict(event)
+    event_payload = cast(
+        dict[str, Any],
+        _json_safe_webhook_value(stripe_object_to_dict(event)),
+    )
     stripe_event_id = event_payload.get("id")
     stripe_event_type = event_payload.get("type")
     if not isinstance(stripe_event_id, str) or not isinstance(stripe_event_type, str):

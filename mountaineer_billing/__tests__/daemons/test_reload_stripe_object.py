@@ -375,3 +375,47 @@ async def test_reload_stripe_object_workflow_happy_path(
     else:
         assert len(projection_states) == 1
         assert projection_states[0].projection_status == SyncStatus.CLEAN
+
+
+@pytest.mark.asyncio
+async def test_reload_stripe_object_workflow_ignores_unsupported_payload(
+    db_connection: DBConnection,
+) -> None:
+    class PaymentMethodPayload(BaseModel):
+        object: str = "payment_method"
+        id: str = "pm_test"
+        customer: str = "cus_payment_method"
+
+    event_id = uuid4()
+    event_model = build_event_model(
+        event_id="evt_payment_method",
+        event_type="payment_method.attached",
+        object_model=PaymentMethodPayload(),
+    )
+
+    await db_connection.insert(
+        [
+            models.StripeEvent(
+                id=event_id,
+                stripe_event_id=event_model.id,
+                stripe_event_type=event_model.type,
+                stripe_object_id="pm_test",
+                stripe_object_type="payment_method",
+                stripe_customer_id="cus_payment_method",
+                livemode=False,
+                stripe_created_at=datetime.now(timezone.utc),
+                payload=event_model.model_dump(mode="json"),
+            )
+        ]
+    )
+
+    response = await ReloadStripeObject().run(event_id=event_id)
+
+    assert response == ReloadStripeObjectResponse(
+        event_id=event_id,
+        stripe_event_id="evt_payment_method",
+        stripe_object_id="evt_payment_method",
+        object_type="unsupported",
+        stripe_customer_id=None,
+    )
+    assert await db_connection.exec(select(models.StripeObject)) == []

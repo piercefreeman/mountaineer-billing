@@ -316,8 +316,8 @@ class ReloadStripeObject(Workflow):
                 timeout=timedelta(seconds=30),
             )
         else:
-            return await self.run_action(
-                fail_unsupported_stripe_payload(hydrated_event),
+            reloaded_object = await self.run_action(
+                ignore_unsupported_stripe_payload(hydrated_event),
                 retry=RetryPolicy(attempts=1),
                 timeout=timedelta(seconds=5),
             )
@@ -527,14 +527,17 @@ async def reload_subscription(
 
 
 @action
-async def fail_unsupported_stripe_payload(
+async def ignore_unsupported_stripe_payload(
     request: LoadSavedStripeEventResponse,
 ) -> ReloadStripeObjectResponse:
-    """Raise a workflow-safe error for events without a supported object body."""
+    """Acknowledge saved webhook events whose object types we do not mirror."""
 
-    raise ValueError(
-        f"Stripe event {request.stripe_event_id} does not contain a supported "
-        "object payload"
+    return ReloadStripeObjectResponse(
+        event_id=request.event_id,
+        stripe_event_id=request.stripe_event_id,
+        stripe_object_id=request.stripe_event_id,
+        object_type="unsupported",
+        stripe_customer_id=None,
     )
 
 

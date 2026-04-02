@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.DS_Store
+artifacts
+integration-runner/.venv
+integration-runner/artifacts

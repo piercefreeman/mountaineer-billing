@@ -189,6 +189,57 @@ billing-sync down
 stripe-sync materialize
 ```
 
+## Integration Runner
+
+For a simple headful checkout walkthrough, the repo now includes an
+`integration-runner` CLI. It boots a small Mountaineer-backed demo config,
+resets and recreates the local billing schema, syncs the demo catalog to Stripe
+test mode, opens a fresh Stripe Checkout session through `mountaineer-billing`,
+fills a test card in headful Chromium, and records a video of the run.
+
+Start the local integration stack:
+
+```bash
+./integration-runner/scripts/start-stripe-webhooks.sh
+```
+
+Set a Stripe test secret key in `integration-runner/.env` first. The helper
+starts `postgres`, `daemon`, and `app-server`, fetches the Stripe webhook
+signing secret with `stripe listen --print-secret`, writes
+`STRIPE_WEBHOOK_SECRET` back into `integration-runner/.env`, recreates
+`app-server` so it reloads the updated environment, and then attaches the live
+listener.
+
+If you want to run the steps manually instead:
+
+```bash
+docker compose -f integration-runner/docker-compose.yml up -d --wait postgres daemon app-server
+docker compose -f integration-runner/docker-compose.yml run --rm --no-deps stripe-cli listen \
+  --api-key "$(awk -F= '/^STRIPE_API_KEY=/{print $2}' integration-runner/.env)" \
+  --forward-to http://app-server:8000/external/billing/webhooks/stripe \
+  --print-secret --skip-update
+# Write the printed whsec_... value into integration-runner/.env as STRIPE_WEBHOOK_SECRET.
+docker compose -f integration-runner/docker-compose.yml up -d --wait --force-recreate --no-deps app-server
+docker compose -f integration-runner/docker-compose.yml --profile stripe up stripe-cli
+docker compose -f integration-runner/docker-compose.yml --profile runner up -d runner
+docker compose -f integration-runner/docker-compose.yml exec runner /workspace/integration-runner/scripts/run-runner.sh
+```
+
+The runner config lives in `integration-runner/integration_runner/config.py`.
+`STRIPE_API_KEY` must start with `sk_test_`; live keys are rejected at config
+validation time. By default the runner uses the PostgreSQL settings exposed by
+`integration-runner/docker-compose.yml`, clears the public schema on startup,
+creates or reuses `checkout-runner@example.com`, syncs the demo products to
+Stripe, types Stripe's standard `4242` test card, and saves video output under
+`artifacts/integration-runner/videos`. The Docker stack also exposes an
+`app-server` service for webhook processing and a `daemon` service for the
+Waymark-backed billing workflows. The daemon can also expose the embedded
+Waymark webapp on `localhost:24119` by setting `WAYMARK_WEBAPP_ENABLED=true`.
+If you want to change the product, URLs, card
+data, browser behavior, or database settings, override the
+`INTEGRATION_RUNNER_*` and `POSTGRES_*` environment variables exposed by that
+config.
+
 ## Using Billing
 
 Once your catalog is synced and Stripe is sending webhooks to
