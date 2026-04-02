@@ -486,9 +486,7 @@ async def test_reload_stripe_object_workflow_ignores_upcoming_invoice_preview(
     db_connection: DBConnection,
     invoice_id: str | None,
 ) -> None:
-    invoice_payload, customer_id = build_upcoming_invoice_payload(
-        invoice_id=invoice_id
-    )
+    invoice_payload, customer_id = build_upcoming_invoice_payload(invoice_id=invoice_id)
     event_id = uuid4()
     event_model = build_event_model(
         event_id="evt_invoice_upcoming",
