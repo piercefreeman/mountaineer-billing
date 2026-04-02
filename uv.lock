@@ -1189,7 +1189,6 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
     { name = "ty" },
-    { name = "types-stripe" },
 ]
 
 [package.metadata]
@@ -1210,7 +1209,6 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "ruff", specifier = ">=0.2.1" },
     { name = "ty", specifier = ">=0.0.1a17" },
-    { name = "types-stripe", specifier = ">=3.5.2.20240106" },
 ]
 
 [[package]]
@@ -1892,15 +1890,15 @@ wheels = [
 
 [[package]]
 name = "stripe"
-version = "15.0.0"
+version = "15.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/5a/0cdea4b7911b8012936c765544109da27c0728f6911ec7aefe9d59e7a4f9/stripe-15.0.0.tar.gz", hash = "sha256:0717cd9ba8e8193cef8b1c488ce27836754df496ab6fb75864096e0cdf15e52d", size = 1486873, upload-time = "2026-03-26T01:39:04.073Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/b4/bd4baf56cfb9ec7ee66b0d33611e196afaabd12ddcc2322f29449649ec5f/stripe-15.0.1.tar.gz", hash = "sha256:3c04e8cc9ec8d9542f9dd998e2a4361dbe3d0b6150ca17d3f352546cf22c5565", size = 1490326, upload-time = "2026-04-01T23:52:21.218Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/4a/4431c998c451cf07f8b4fed98f425b4aaf3d59cc4fb1e6f54d7713606688/stripe-15.0.0-py3-none-any.whl", hash = "sha256:434ec5267a7402a30b76786d159c18d0e138f89195969d6c56bea2e08d353be0", size = 2125454, upload-time = "2026-03-26T01:39:01.801Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/ee/4537ba64d6c2f8bc58667f4381429c804bbc2e854b5857337cbc39add620/stripe-15.0.1-py3-none-any.whl", hash = "sha256:0a525e4550b5bf7fb44ff682266b9d46cfb38dd6f1f97a85d361c452f69e6b4b", size = 2132160, upload-time = "2026-04-01T23:52:18.647Z" },
 ]
 
 [[package]]
@@ -1925,15 +1923,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/14/d3/d6fa1cafdfa2b34dbfa304fc6833af8e1669fc34e24d214fa76d2a2e5a25/ty-0.0.27-py3-none-win32.whl", hash = "sha256:34e7377f2047c14dbbb7bf5322e84114db7a5f2cb470db6bee63f8f3550cfc1e", size = 9984415, upload-time = "2026-03-31T19:07:07.98Z" },
     { url = "https://files.pythonhosted.org/packages/85/e6/dd4e27da9632b3472d5711ca49dbd3709dbd3e8c73f3af6db9c254235ca9/ty-0.0.27-py3-none-win_amd64.whl", hash = "sha256:3f7e4145aad8b815ed69b324c93b5b773eb864dda366ca16ab8693ff88ce6f36", size = 10961535, upload-time = "2026-03-31T19:07:10.566Z" },
     { url = "https://files.pythonhosted.org/packages/0e/1a/824b3496d66852ed7d5d68d9787711131552b68dce8835ce9410db32e618/ty-0.0.27-py3-none-win_arm64.whl", hash = "sha256:95bf8d01eb96bb2ba3ffc39faff19da595176448e80871a7b362f4d2de58476c", size = 10376689, upload-time = "2026-03-31T19:07:25.732Z" },
-]
-
-[[package]]
-name = "types-stripe"
-version = "3.5.2.20240106"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/be/20/3f23987c2e4ee93e6d9a9ffd3058530d1e8373f5e134fd88b3f0ec5487eb/types-stripe-3.5.2.20240106.tar.gz", hash = "sha256:63a36958f0dc4a71685b027f0b6d807ff197ee337135ac19a0f8b6132365ca52", size = 19075, upload-time = "2024-01-06T02:21:44.89Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/73/a21fd4712675a4a0076f9260cdb193a339efbc4bf76fbe0d9a60dadd2b3f/types_stripe-3.5.2.20240106-py3-none-any.whl", hash = "sha256:9ea7bc9b9889a3d8606114c52dcc70a8fc62d44a46da4bc5ee19f0d463674bb8", size = 53986, upload-time = "2024-01-06T02:21:43.461Z" },
 ]
 
 [[package]]

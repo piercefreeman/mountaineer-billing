@@ -173,6 +173,53 @@ def build_invoice_payload() -> tuple[InvoiceModel, str | None]:
     )
 
 
+def build_upcoming_invoice_payload(
+    *,
+    invoice_id: str | None,
+) -> tuple[dict[str, object], str | None]:
+    customer_id = "cus_upcoming_invoice"
+    payload: dict[str, object] = {
+        "object": "invoice",
+        "amount_due": 100,
+        "amount_overpaid": 0,
+        "amount_paid": 0,
+        "amount_remaining": 100,
+        "amount_shipping": 0,
+        "attempt_count": 0,
+        "attempted": False,
+        "auto_advance": False,
+        "automatic_tax": {"enabled": False},
+        "billing_reason": "upcoming",
+        "collection_method": "charge_automatically",
+        "created": 1,
+        "currency": "usd",
+        "customer": customer_id,
+        "default_tax_rates": [],
+        "discounts": [],
+        "issuer": {"type": "self"},
+        "lines": {
+            "object": "list",
+            "data": [],
+            "has_more": False,
+            "url": "/v1/invoices/upcoming_in_test/lines",
+        },
+        "livemode": False,
+        "payment_settings": {"payment_method_options": {}},
+        "period_end": 2,
+        "period_start": 1,
+        "post_payment_credit_notes_amount": 0,
+        "pre_payment_credit_notes_amount": 0,
+        "starting_balance": 0,
+        "status": "draft",
+        "status_transitions": {},
+        "subtotal": 100,
+        "total": 100,
+    }
+    if invoice_id is not None:
+        payload["id"] = invoice_id
+    return payload, customer_id
+
+
 def build_payment_intent_payload() -> tuple[PaymentIntent, str | None]:
     customer_id = "cus_payment_intent"
     return (
@@ -259,15 +306,20 @@ def build_event_model(
     *,
     event_id: str,
     event_type: str,
-    object_model: BaseModel,
+    object_model: BaseModel | dict[str, object],
 ) -> Event:
+    object_payload = (
+        object_model.model_dump(mode="json")
+        if isinstance(object_model, BaseModel)
+        else object_model
+    )
     return Event(
         id=event_id,
         object="event",
         api_version=API_VERSION,
         created=1,
         data={
-            "object": object_model.model_dump(mode="json"),
+            "object": object_payload,
         },
         livemode=False,
         pending_webhooks=0,
@@ -415,6 +467,55 @@ async def test_reload_stripe_object_workflow_ignores_unsupported_payload(
         event_id=event_id,
         stripe_event_id="evt_payment_method",
         stripe_object_id="evt_payment_method",
+        object_type="unsupported",
+        stripe_customer_id=None,
+    )
+    assert await db_connection.exec(select(models.StripeObject)) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("invoice_id",),
+    [
+        (None,),
+        ("upcoming_in_test",),
+    ],
+    ids=["missing_id", "with_id"],
+)
+async def test_reload_stripe_object_workflow_ignores_upcoming_invoice_preview(
+    db_connection: DBConnection,
+    invoice_id: str | None,
+) -> None:
+    invoice_payload, customer_id = build_upcoming_invoice_payload(invoice_id=invoice_id)
+    event_id = uuid4()
+    event_model = build_event_model(
+        event_id="evt_invoice_upcoming",
+        event_type="invoice.upcoming",
+        object_model=invoice_payload,
+    )
+
+    await db_connection.insert(
+        [
+            models.StripeEvent(
+                id=event_id,
+                stripe_event_id=event_model.id,
+                stripe_event_type=event_model.type,
+                stripe_object_id=None,
+                stripe_object_type="invoice",
+                stripe_customer_id=customer_id,
+                livemode=False,
+                stripe_created_at=datetime.now(timezone.utc),
+                payload=event_model.model_dump(mode="json"),
+            )
+        ]
+    )
+
+    response = await ReloadStripeObject().run(event_id=event_id)
+
+    assert response == ReloadStripeObjectResponse(
+        event_id=event_id,
+        stripe_event_id="evt_invoice_upcoming",
+        stripe_object_id="evt_invoice_upcoming",
         object_type="unsupported",
         stripe_customer_id=None,
     )
