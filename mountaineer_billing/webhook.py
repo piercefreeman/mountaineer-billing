@@ -33,6 +33,20 @@ router = APIRouter(prefix="/external/billing")
 
 
 def _json_safe_webhook_value(value: Any) -> Any:
+    """Convert Stripe webhook payload values into plain JSON-safe primitives.
+
+    Stripe's Python SDK can surface ``Decimal`` instances inside nested event
+    payloads such as invoice line pricing data. Pydantic would serialize those
+    values correctly in ``mode="json"``, but this webhook path does not persist
+    a Pydantic model. We first convert the Stripe event into a plain nested
+    Python ``dict`` via ``stripe_object_to_dict(...)`` and then store that raw
+    payload in ``StripeEvent.payload`` as JSON. Without this normalization,
+    those ``Decimal`` values are rejected by the normal JSON encoder as not
+    serializable.
+
+    We stringify decimals instead of coercing to float so we preserve the exact
+    value that Stripe sent.
+    """
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, Mapping):
