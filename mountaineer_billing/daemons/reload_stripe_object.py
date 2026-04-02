@@ -286,11 +286,21 @@ class ReloadStripeObject(Workflow):
                 timeout=timedelta(seconds=30),
             )
         elif hydrated_event.payload.invoice is not None:
-            reloaded_object = await self.run_action(
-                reload_invoice(hydrated_event),
-                retry=RetryPolicy(attempts=3, backoff_seconds=5),
-                timeout=timedelta(seconds=30),
-            )
+            # `invoice.upcoming` carries a preview invoice, not a canonical invoice
+            # snapshot. Those payloads can omit `id`, so keep the webhook in the
+            # StripeEvent audit log but do not mirror it into StripeObject.
+            if hydrated_event.payload.event.type == "invoice.upcoming":
+                reloaded_object = await self.run_action(
+                    ignore_unsupported_stripe_payload(hydrated_event),
+                    retry=RetryPolicy(attempts=3, backoff_seconds=5),
+                    timeout=timedelta(seconds=30),
+                )
+            else:
+                reloaded_object = await self.run_action(
+                    reload_invoice(hydrated_event),
+                    retry=RetryPolicy(attempts=3, backoff_seconds=5),
+                    timeout=timedelta(seconds=30),
+                )
         elif hydrated_event.payload.payment_intent is not None:
             reloaded_object = await self.run_action(
                 reload_payment_intent(hydrated_event),
