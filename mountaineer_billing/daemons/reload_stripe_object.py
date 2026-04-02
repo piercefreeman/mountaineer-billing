@@ -181,6 +181,27 @@ def extract_internal_user_id(payload: dict[str, Any]) -> UUID | None:
     return None
 
 
+def should_skip_typed_object_hydration(
+    *,
+    event_type: str | None,
+    object_type: Any,
+    stripe_object_payload: dict[str, Any],
+) -> bool:
+    """
+    Allow preview invoices without ids to stay in the audit log.
+
+    Stripe can emit ``invoice.upcoming`` previews without a canonical invoice id.
+    Those payloads should still be loadable from ``StripeEvent``, but they cannot
+    be re-hydrated into the generated ``InvoiceModel`` for newer API versions.
+    """
+
+    return (
+        object_type == "invoice"
+        and event_type == "invoice.upcoming"
+        and not isinstance(stripe_object_payload.get("id"), str)
+    )
+
+
 class ReloadStripeObjectPayload(BaseModel):
     event: StripeEventPayload
     charge: StripeChargePayload = None
@@ -362,12 +383,17 @@ async def load_saved_stripe_event(
     stripe_object_payload = stripe_object_to_dict(stripe_object)
     object_type = stripe_object_payload.get("object")
     api_version = saved_event.payload.get("api_version")
+    event_type = saved_event.payload.get("type")
 
     payload_kwargs: dict[str, Any] = {
         "event": saved_event.typed_payload,
     }
 
-    if object_type in OBJECT_TYPE_TO_ADAPTER:
+    if object_type in OBJECT_TYPE_TO_ADAPTER and not should_skip_typed_object_hydration(
+        event_type=event_type,
+        object_type=object_type,
+        stripe_object_payload=stripe_object_payload,
+    ):
         adapter = OBJECT_TYPE_TO_ADAPTER[object_type]
         field_name = OBJECT_TYPE_TO_FIELD[object_type]
         payload_kwargs[field_name] = adapter.validate_python(
