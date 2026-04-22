@@ -44,6 +44,7 @@ async def test_materialize_users_runs_workflow_for_all_local_users_with_customer
 
     assert user.stripe_customer_id is None
     assert summary.users_selected == 2
+    assert summary.users_enqueued == 2
     assert summary.users_materialized == 2
     assert summary.users_failed == 0
     mock_materialize.assert_has_awaits(
@@ -51,6 +52,7 @@ async def test_materialize_users_runs_workflow_for_all_local_users_with_customer
             call(
                 stripe_customer_id=materialized_user.stripe_customer_id,
                 internal_user_id=materialized_user.id,
+                _blocking=False,
             )
             for materialized_user in expected_users
         ],
@@ -75,7 +77,12 @@ async def test_materialize_users_continues_after_workflow_failure(
     )
     await db_connection.insert([failed_user, successful_user])
 
-    async def mock_run(*, stripe_customer_id: str, internal_user_id) -> None:
+    async def mock_run(
+        *,
+        stripe_customer_id: str,
+        internal_user_id,
+        _blocking: bool,
+    ) -> None:
         if stripe_customer_id == "cus_fail":
             raise RuntimeError(f"failed for {internal_user_id}")
 
@@ -88,6 +95,7 @@ async def test_materialize_users_continues_after_workflow_failure(
         )
 
     assert summary.users_selected == 2
+    assert summary.users_enqueued == 1
     assert summary.users_materialized == 1
     assert summary.users_failed == 1
 

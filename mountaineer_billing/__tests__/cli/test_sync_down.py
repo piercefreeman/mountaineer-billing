@@ -24,11 +24,11 @@ class FakeListResponse:
         return iter(self._objects)
 
 
-def build_customer() -> stripe.Customer:
+def build_customer(*, customer_id: str = "cus_test") -> stripe.Customer:
     return stripe.Customer.construct_from(
         {
             "object": "customer",
-            "id": "cus_test",
+            "id": customer_id,
             "created": 1,
             "livemode": False,
         },
@@ -146,8 +146,12 @@ async def test_sync_down_persists_supported_objects_and_price_mappings(
     assert summary.synced_counts["product"] == 1
     assert summary.synced_counts["subscription"] == 1
     assert summary.price_mappings_upserted == 1
+    assert summary.customers_enqueued == 1
     assert summary.customers_materialized == 1
-    mock_materialize.assert_awaited_once_with(stripe_customer_id="cus_test")
+    mock_materialize.assert_awaited_once_with(
+        stripe_customer_id="cus_test",
+        _blocking=False,
+    )
 
     stripe_objects = await db_connection.exec(select(models.StripeObject))
     assert len(stripe_objects) == 4
@@ -226,3 +230,65 @@ async def test_sync_down_updates_existing_rows_without_duplicates(
     )
     assert len(product_prices) == 1
     assert product_prices[0].stripe_price_id == "price_test"
+
+
+@pytest.mark.asyncio
+async def test_sync_down_logs_progress_with_eta_from_local_estimate(
+    config: models.AppConfig,
+    db_connection: DBConnection,
+) -> None:
+    sync_down = StripeSyncDown(config=config)
+    sync_down.progress_log_interval_objects = 2
+    sync_down.progress_log_interval_seconds = 3600
+
+    async def mock_local_estimate(*, db_connection, object_type: str) -> int | None:
+        del db_connection
+        if object_type == "customer":
+            return 4
+        return None
+
+    with (
+        patch("stripe.Charge.list", return_value=FakeListResponse([])),
+        patch(
+            "stripe.checkout.Session.list",
+            return_value=FakeListResponse([]),
+        ),
+        patch(
+            "stripe.Customer.list",
+            return_value=FakeListResponse(
+                [
+                    build_customer(customer_id="cus_one"),
+                    build_customer(customer_id="cus_two"),
+                ]
+            ),
+        ),
+        patch("stripe.Invoice.list", return_value=FakeListResponse([])),
+        patch("stripe.PaymentIntent.list", return_value=FakeListResponse([])),
+        patch(
+            "stripe.Price.list",
+            side_effect=[FakeListResponse([]), FakeListResponse([])],
+        ),
+        patch("stripe.Product.list", return_value=FakeListResponse([])),
+        patch("stripe.Subscription.list", return_value=FakeListResponse([])),
+        patch.object(
+            sync_down,
+            "_local_object_count_estimate",
+            new=AsyncMock(side_effect=mock_local_estimate),
+        ),
+        patch(
+            "mountaineer_billing.cli.sync_down.MaterializeSubscriptions.run",
+            new=AsyncMock(return_value="workflow-instance-id"),
+        ),
+        patch("mountaineer_billing.cli.sync_down.LOGGER.info") as mock_info,
+    ):
+        await sync_down.sync_objects(db_connection)
+
+    rendered_messages = [
+        call.args[0] % call.args[1:] if len(call.args) > 1 else call.args[0]
+        for call in mock_info.call_args_list
+    ]
+    assert any(
+        "Stripe customer sync progress: 2/4 objects (50.0%)" in message
+        and "ETA" in message
+        for message in rendered_messages
+    )
