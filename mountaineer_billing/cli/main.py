@@ -21,6 +21,7 @@ from mountaineer.io import async_to_sync
 
 from mountaineer_billing.cli.materialize import StripeSyncMaterialize
 from mountaineer_billing.cli.sync_down import StripeSyncDown
+from mountaineer_billing.cli.sync_down_reporter import RichSyncDownReporter
 from mountaineer_billing.cli.sync_up import BillingSync
 from mountaineer_billing.config import BillingConfig
 
@@ -195,7 +196,11 @@ async def sync_down_command(
     config = load_sync_config(config_import_path)
 
     async def handler(db_connection: DBConnection) -> None:
-        await StripeSyncDown(config=config).sync_objects(db_connection)
+        with RichSyncDownReporter() as reporter:
+            await StripeSyncDown(config=config).sync_objects(
+                db_connection,
+                reporter=reporter,
+            )
 
     await run_with_db_connection(config=config, handler=handler)
 

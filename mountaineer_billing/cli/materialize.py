@@ -3,6 +3,7 @@ from __future__ import annotations
 from iceaxe import DBConnection, select
 from pydantic import BaseModel
 
+from mountaineer_billing.cli.waymark import run_workflow_nonblocking
 from mountaineer_billing.config import BillingConfig
 from mountaineer_billing.daemons.materialize_subscriptions import (
     MaterializeSubscriptions,
@@ -12,7 +13,7 @@ from mountaineer_billing.logging import LOGGER
 
 class MaterializeSyncSummary(BaseModel):
     users_selected: int = 0
-    users_materialized: int = 0
+    users_enqueued: int = 0
     users_failed: int = 0
 
 
@@ -42,7 +43,8 @@ class StripeSyncMaterialize:
                 continue
 
             try:
-                await MaterializeSubscriptions().run(
+                await run_workflow_nonblocking(
+                    MaterializeSubscriptions().run,
                     stripe_customer_id=stripe_customer_id,
                     internal_user_id=user.id,
                 )
@@ -56,11 +58,11 @@ class StripeSyncMaterialize:
                 )
                 continue
 
-            summary.users_materialized += 1
+            summary.users_enqueued += 1
 
         LOGGER.info(
-            "Completed Stripe materialize sync: %s materialized, %s failed",
-            summary.users_materialized,
+            "Queued Stripe materialize sync: %s users enqueued, %s failed",
+            summary.users_enqueued,
             summary.users_failed,
         )
         return summary

@@ -1178,6 +1178,7 @@ dependencies = [
     { name = "iceaxe" },
     { name = "mountaineer" },
     { name = "mountaineer-auth" },
+    { name = "rich" },
     { name = "stripe" },
     { name = "waymark" },
 ]
@@ -1198,6 +1199,7 @@ requires-dist = [
     { name = "iceaxe", specifier = ">=0.0.0,<1.0.0" },
     { name = "mountaineer" },
     { name = "mountaineer-auth" },
+    { name = "rich", specifier = ">=13.9.4" },
     { name = "stripe", specifier = ">=12.1.0" },
     { name = "waymark" },
 ]
