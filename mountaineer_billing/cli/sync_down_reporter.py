@@ -18,6 +18,8 @@ from mountaineer_billing.logging import LOGGER
 
 
 class SyncDownReporter(Protocol):
+    """Shared reporter interface for Stripe sync-down progress updates."""
+
     def start_sync(self, *, api_version: str | None) -> None: ...
 
     def start_endpoint(self, *, object_type: str) -> None: ...
@@ -55,6 +57,14 @@ class SyncDownReporter(Protocol):
 
 
 class LoggingSyncDownReporter:
+    """Fallback reporter for `StripeSyncDown.sync_objects()` outside the Rich CLI path.
+
+    This is the default when a caller invokes `sync_objects()` without injecting a
+    reporter, which is the behavior used by tests and any programmatic or
+    non-interactive entrypoints that want ordinary structured log lines instead of
+    the `billing-sync down` terminal progress UI.
+    """
+
     def start_sync(self, *, api_version: str | None) -> None:
         LOGGER.info(
             "Starting Stripe sync down using API version %s",
@@ -129,6 +139,8 @@ class LoggingSyncDownReporter:
 
 
 class RichSyncDownReporter(AbstractContextManager["RichSyncDownReporter"]):
+    """Terminal progress reporter for the interactive `billing-sync down` command."""
+
     def __init__(self, *, console: Console | None = None):
         self.console = console or Console(stderr=True)
         self.progress = Progress(
