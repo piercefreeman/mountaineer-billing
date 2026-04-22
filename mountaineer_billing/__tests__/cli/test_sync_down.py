@@ -152,7 +152,6 @@ async def test_sync_down_persists_supported_objects_and_price_mappings(
     assert summary.synced_counts["subscription"] == 1
     assert summary.price_mappings_upserted == 1
     assert summary.customers_enqueued == 1
-    assert summary.customers_materialized == 1
     mock_materialize.assert_awaited_once_with(
         stripe_customer_id="cus_test",
         _blocking=False,

@@ -16,10 +16,6 @@ class MaterializeSyncSummary(BaseModel):
     users_enqueued: int = 0
     users_failed: int = 0
 
-    @property
-    def users_materialized(self) -> int:
-        return self.users_enqueued
-
 
 class StripeSyncMaterialize:
     def __init__(self, config: BillingConfig):

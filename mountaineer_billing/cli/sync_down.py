@@ -112,10 +112,6 @@ class SyncDownSummary(BaseModel):
     price_mappings_upserted: int = 0
     customers_enqueued: int = 0
 
-    @property
-    def customers_materialized(self) -> int:
-        return self.customers_enqueued
-
 
 class StripeSyncDown:
     def __init__(self, config: BillingConfig):
