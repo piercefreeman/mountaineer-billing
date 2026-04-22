@@ -5,9 +5,13 @@ from time import monotonic
 from typing import Any, Callable, cast
 
 import stripe
-from iceaxe import DBConnection, func, select
+from iceaxe import DBConnection
 from pydantic import BaseModel, Field
 
+from mountaineer_billing.cli.sync_down_reporter import (
+    LoggingSyncDownReporter,
+    SyncDownReporter,
+)
 from mountaineer_billing.cli.sync_up import (
     HasPriceMappingData,
     upsert_price_mapping_from_stripe_price,
@@ -22,7 +26,6 @@ from mountaineer_billing.daemons.reload_stripe_object import (
     stripe_object_to_dict,
     upsert_stripe_object_snapshot,
 )
-from mountaineer_billing.logging import LOGGER
 
 
 def list_charges(**kwargs: Any) -> Any:
@@ -68,7 +71,6 @@ class StripeObjectEndpoint:
 class EndpointSyncProgress:
     object_type: str
     started_at: float
-    local_estimate: int | None = None
     last_logged_at: float = 0.0
     last_logged_synced_count: int = 0
 
@@ -123,47 +125,34 @@ class StripeSyncDown:
         self.progress_log_interval_objects = 500
         self.progress_log_interval_seconds = 30.0
 
-    async def sync_objects(self, db_connection: DBConnection) -> SyncDownSummary:
+    async def sync_objects(
+        self,
+        db_connection: DBConnection,
+        *,
+        reporter: SyncDownReporter | None = None,
+    ) -> SyncDownSummary:
+        reporter = reporter or LoggingSyncDownReporter()
         sync_started_at = monotonic()
-        LOGGER.info(
-            "Starting Stripe sync down using API version %s",
-            self.api_version,
-        )
+        reporter.start_sync(api_version=self.api_version)
 
         customer_ids_to_materialize: set[str] = set()
         summary = SyncDownSummary()
 
-        total_endpoints = len(SYNC_DOWN_ENDPOINTS)
-        for endpoint_index, endpoint in enumerate(SYNC_DOWN_ENDPOINTS, start=1):
+        for endpoint in SYNC_DOWN_ENDPOINTS:
             synced_count = 0
             seen_stripe_ids: set[str] = set()
-            local_estimate = await self._local_object_count_estimate(
-                db_connection=db_connection,
-                object_type=endpoint.object_type,
-            )
             progress = EndpointSyncProgress(
                 object_type=endpoint.object_type,
                 started_at=monotonic(),
-                local_estimate=local_estimate,
                 last_logged_at=monotonic(),
             )
-            LOGGER.info(
-                "Syncing Stripe %s objects (%s/%s%s)",
-                endpoint.object_type,
-                endpoint_index,
-                total_endpoints,
-                (
-                    f", local estimate {local_estimate}"
-                    if local_estimate is not None
-                    else ", local estimate unavailable"
-                ),
-            )
+            reporter.start_endpoint(object_type=endpoint.object_type)
 
             for raw_object in self._iter_remote_objects(endpoint):
                 payload_data = stripe_object_to_dict(raw_object)
                 stripe_id = payload_data.get("id")
                 if not isinstance(stripe_id, str):
-                    LOGGER.warning(
+                    reporter.warning(
                         "Skipping Stripe %s without id during sync down",
                         endpoint.object_type,
                     )
@@ -206,15 +195,19 @@ class StripeSyncDown:
                 self._maybe_log_endpoint_progress(
                     progress=progress,
                     synced_count=synced_count,
+                    reporter=reporter,
                 )
 
             summary.synced_counts[endpoint.object_type] = synced_count
-            self._log_endpoint_completed(progress=progress, synced_count=synced_count)
+            self._log_endpoint_completed(
+                progress=progress,
+                synced_count=synced_count,
+                reporter=reporter,
+            )
 
         if customer_ids_to_materialize:
-            LOGGER.info(
-                "Queueing subscription materialization for %s customers",
-                len(customer_ids_to_materialize),
+            reporter.queue_materialization(
+                customer_count=len(customer_ids_to_materialize),
             )
         for stripe_customer_id in sorted(customer_ids_to_materialize):
             try:
@@ -223,7 +216,7 @@ class StripeSyncDown:
                     stripe_customer_id=stripe_customer_id,
                 )
             except Exception as exc:
-                LOGGER.warning(
+                reporter.warning(
                     "Skipping subscription materialization for customer %s: %s",
                     stripe_customer_id,
                     exc,
@@ -232,12 +225,11 @@ class StripeSyncDown:
 
             summary.customers_enqueued += 1
 
-        LOGGER.info(
-            "Completed Stripe sync down in %s: %s Stripe objects synced, %s price mappings upserted, %s customers enqueued",
-            format_duration(monotonic() - sync_started_at),
-            sum(summary.synced_counts.values()),
-            summary.price_mappings_upserted,
-            summary.customers_enqueued,
+        reporter.complete_sync(
+            elapsed_seconds=monotonic() - sync_started_at,
+            total_synced=sum(summary.synced_counts.values()),
+            price_mappings_upserted=summary.price_mappings_upserted,
+            customers_enqueued=summary.customers_enqueued,
         )
         return summary
 
@@ -251,29 +243,12 @@ class StripeSyncDown:
             )
             yield from list_response.auto_paging_iter()
 
-    async def _local_object_count_estimate(
-        self,
-        *,
-        db_connection: DBConnection,
-        object_type: str,
-    ) -> int | None:
-        stripe_object_model = self.config.BILLING_MODELS.STRIPE_OBJECT
-        result = await db_connection.exec(
-            select(func.count(stripe_object_model.stripe_id)).where(
-                stripe_object_model.object_type == object_type
-            )
-        )
-        if not result:
-            return None
-
-        count = int(result[0])
-        return count if count > 0 else None
-
     def _maybe_log_endpoint_progress(
         self,
         *,
         progress: EndpointSyncProgress,
         synced_count: int,
+        reporter: SyncDownReporter,
     ) -> None:
         if synced_count <= 0:
             return
@@ -288,39 +263,12 @@ class StripeSyncDown:
 
         elapsed = max(now - progress.started_at, 1e-9)
         objects_per_second = synced_count / elapsed
-        local_estimate = progress.local_estimate
-
-        if local_estimate is not None and local_estimate >= synced_count:
-            remaining_objects = local_estimate - synced_count
-            percent_complete = (synced_count / local_estimate) * 100
-            eta_seconds = remaining_objects / objects_per_second
-            LOGGER.info(
-                "Stripe %s sync progress: %s/%s objects (%.1f%%) in %s at %.1f objects/sec; ETA %s",
-                progress.object_type,
-                synced_count,
-                local_estimate,
-                percent_complete,
-                format_duration(elapsed),
-                objects_per_second,
-                format_duration(eta_seconds),
-            )
-        elif local_estimate is not None:
-            LOGGER.info(
-                "Stripe %s sync progress: %s objects synced in %s at %.1f objects/sec (exceeded local estimate of %s)",
-                progress.object_type,
-                synced_count,
-                format_duration(elapsed),
-                objects_per_second,
-                local_estimate,
-            )
-        else:
-            LOGGER.info(
-                "Stripe %s sync progress: %s objects synced in %s at %.1f objects/sec",
-                progress.object_type,
-                synced_count,
-                format_duration(elapsed),
-                objects_per_second,
-            )
+        reporter.update_endpoint(
+            object_type=progress.object_type,
+            synced_count=synced_count,
+            elapsed_seconds=elapsed,
+            objects_per_second=objects_per_second,
+        )
 
         progress.last_logged_at = now
         progress.last_logged_synced_count = synced_count
@@ -330,28 +278,16 @@ class StripeSyncDown:
         *,
         progress: EndpointSyncProgress,
         synced_count: int,
+        reporter: SyncDownReporter,
     ) -> None:
         elapsed = max(monotonic() - progress.started_at, 1e-9)
         objects_per_second = synced_count / elapsed if synced_count else 0.0
-        local_estimate = progress.local_estimate
-
-        if local_estimate is not None:
-            LOGGER.info(
-                "Synced %s Stripe %s objects in %s at %.1f objects/sec (local estimate %s)",
-                synced_count,
-                progress.object_type,
-                format_duration(elapsed),
-                objects_per_second,
-                local_estimate,
-            )
-        else:
-            LOGGER.info(
-                "Synced %s Stripe %s objects in %s at %.1f objects/sec",
-                synced_count,
-                progress.object_type,
-                format_duration(elapsed),
-                objects_per_second,
-            )
+        reporter.complete_endpoint(
+            object_type=progress.object_type,
+            synced_count=synced_count,
+            elapsed_seconds=elapsed,
+            objects_per_second=objects_per_second,
+        )
 
 
 __all__ = [

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from io import StringIO
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import stripe
+from click.testing import CliRunner
 from iceaxe import DBConnection, select
+from rich.console import Console
 
 from mountaineer_billing.__tests__ import conf_models as models
+from mountaineer_billing.cli.main import billing_sync
 from mountaineer_billing.cli.sync_down import StripeSyncDown
+from mountaineer_billing.cli.sync_down_reporter import RichSyncDownReporter
 from mountaineer_billing.cli.sync_up import (
     INTERNAL_FREQUENCY_KEY,
     INTERNAL_PRICE_ID_KEY,
@@ -233,19 +238,13 @@ async def test_sync_down_updates_existing_rows_without_duplicates(
 
 
 @pytest.mark.asyncio
-async def test_sync_down_logs_progress_with_eta_from_local_estimate(
+async def test_sync_down_logs_progress_with_throughput_only(
     config: models.AppConfig,
     db_connection: DBConnection,
 ) -> None:
     sync_down = StripeSyncDown(config=config)
     sync_down.progress_log_interval_objects = 2
     sync_down.progress_log_interval_seconds = 3600
-
-    async def mock_local_estimate(*, db_connection, object_type: str) -> int | None:
-        del db_connection
-        if object_type == "customer":
-            return 4
-        return None
 
     with (
         patch("stripe.Charge.list", return_value=FakeListResponse([])),
@@ -270,16 +269,11 @@ async def test_sync_down_logs_progress_with_eta_from_local_estimate(
         ),
         patch("stripe.Product.list", return_value=FakeListResponse([])),
         patch("stripe.Subscription.list", return_value=FakeListResponse([])),
-        patch.object(
-            sync_down,
-            "_local_object_count_estimate",
-            new=AsyncMock(side_effect=mock_local_estimate),
-        ),
         patch(
             "mountaineer_billing.cli.sync_down.MaterializeSubscriptions.run",
             new=AsyncMock(return_value="workflow-instance-id"),
         ),
-        patch("mountaineer_billing.cli.sync_down.LOGGER.info") as mock_info,
+        patch("mountaineer_billing.cli.sync_down_reporter.LOGGER.info") as mock_info,
     ):
         await sync_down.sync_objects(db_connection)
 
@@ -288,7 +282,92 @@ async def test_sync_down_logs_progress_with_eta_from_local_estimate(
         for call in mock_info.call_args_list
     ]
     assert any(
-        "Stripe customer sync progress: 2/4 objects (50.0%)" in message
-        and "ETA" in message
+        "Stripe customer sync progress: 2 objects synced" in message
+        and "objects/sec" in message
         for message in rendered_messages
     )
+    assert not any("ETA" in message for message in rendered_messages)
+
+
+def test_rich_sync_down_reporter_renders_terminal_progress() -> None:
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, width=120)
+
+    with RichSyncDownReporter(console=console) as reporter:
+        reporter.start_sync(api_version="2026-03-25.dahlia")
+        reporter.start_endpoint(object_type="charge")
+        reporter.update_endpoint(
+            object_type="charge",
+            synced_count=500,
+            elapsed_seconds=10.0,
+            objects_per_second=50.0,
+        )
+        reporter.complete_endpoint(
+            object_type="charge",
+            synced_count=500,
+            elapsed_seconds=10.0,
+            objects_per_second=50.0,
+        )
+        reporter.queue_materialization(customer_count=3)
+        reporter.complete_sync(
+            elapsed_seconds=12.0,
+            total_synced=500,
+            price_mappings_upserted=2,
+            customers_enqueued=3,
+        )
+
+    rendered = output.getvalue()
+    assert "Stripe sync down using API version 2026-03-25.dahlia" in rendered
+    assert "charge" in rendered
+    assert "500 synced" in rendered
+    assert "50.0 /s" in rendered
+    assert "Queueing subscription materialization for 3 customers" in rendered
+    assert "Stripe sync down complete in 12s" in rendered
+
+
+def test_sync_down_command_invokes_batch_driver_with_rich_reporter(
+    config: models.AppConfig,
+) -> None:
+    fake_db_connection = object()
+    batch_driver = Mock()
+    batch_driver.sync_objects = AsyncMock(return_value=None)
+    reporter_context = MagicMock()
+    fake_reporter = object()
+    reporter_context.__enter__.return_value = fake_reporter
+    reporter_context.__exit__.return_value = None
+
+    async def mock_run_with_db_connection(*, config, handler):
+        return await handler(fake_db_connection)
+
+    with (
+        patch(
+            "mountaineer_billing.cli.main.load_sync_config",
+            return_value=config,
+        ) as mock_load_config,
+        patch(
+            "mountaineer_billing.cli.main.run_with_db_connection",
+            new=AsyncMock(side_effect=mock_run_with_db_connection),
+        ) as mock_run_with_db,
+        patch(
+            "mountaineer_billing.cli.main.StripeSyncDown",
+            return_value=batch_driver,
+        ) as mock_batch_driver,
+        patch(
+            "mountaineer_billing.cli.main.RichSyncDownReporter",
+            return_value=reporter_context,
+        ) as mock_reporter_cls,
+    ):
+        result = CliRunner().invoke(
+            billing_sync,
+            ["down", "--config", "example.config:AppConfig"],
+        )
+
+    assert result.exit_code == 0
+    mock_load_config.assert_called_once_with("example.config:AppConfig")
+    mock_batch_driver.assert_called_once_with(config=config)
+    batch_driver.sync_objects.assert_awaited_once_with(
+        fake_db_connection,
+        reporter=fake_reporter,
+    )
+    mock_reporter_cls.assert_called_once_with()
+    mock_run_with_db.assert_awaited_once()

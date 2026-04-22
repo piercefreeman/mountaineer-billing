@@ -12,6 +12,7 @@ dependencies = [
     "stripe>=12.1.0",
     "iceaxe>=0.0.0,<1.0.0",
     "grpcio>=1.71.2",
+    "rich>=13.9.4",
     "waymark",
     "mountaineer",
     "mountaineer-auth",
