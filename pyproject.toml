@@ -13,7 +13,7 @@ dependencies = [
     "iceaxe>=0.0.0,<1.0.0",
     "grpcio>=1.71.2",
     "waymark",
-    "mountaineer",
+    "mountaineer>=0.20.0.dev1",
     "mountaineer-auth",
 ]
 
