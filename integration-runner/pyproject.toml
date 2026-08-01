@@ -9,7 +9,7 @@ dependencies = [
     "iceaxe>=0.0.0,<1.0.0",
     "lxml>=5.3.0",
     "mountaineer>=0.20.0.dev1",
-    "mountaineer-auth>=0.1.1",
+    "mountaineer-auth>=0.3.0.dev1",
     "mountaineer-billing",
     "playwright>=1.52.0",
     "python-dotenv>=1.2.2",
@@ -28,6 +28,8 @@ dev = [
     "pytest-asyncio>=0.23.5",
 ]
 
+[tool.uv]
+prerelease = "allow"
+
 [tool.uv.sources]
-mountaineer-auth = { git = "https://github.com/piercefreeman/mountaineer-auth.git", branch = "feature/native-runtime-coordinator" }
 mountaineer-billing = { path = "..", editable = true }

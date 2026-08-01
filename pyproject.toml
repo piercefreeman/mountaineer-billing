@@ -15,7 +15,7 @@ dependencies = [
     "rich>=13.9.4",
     "waymark",
     "mountaineer>=0.20.0.dev1",
-    "mountaineer-auth>=0.1.1",
+    "mountaineer-auth>=0.3.0.dev1",
 ]
 
 [project.scripts]
@@ -35,9 +35,11 @@ dev = [
     "freezegun>=1.5.1",
 ]
 
+[tool.uv]
+prerelease = "allow"
+
 [tool.uv.sources]
 #mountaineer = { path = "../../mountaineer", editable = true }
-mountaineer-auth = { git = "https://github.com/piercefreeman/mountaineer-auth.git", branch = "feature/native-runtime-coordinator" }
 
 [tool.ruff]
 force-exclude = true
