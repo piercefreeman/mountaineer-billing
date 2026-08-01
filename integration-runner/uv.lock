@@ -2,6 +2,9 @@ version = 1
 revision = 3
 requires-python = ">=3.11"
 
+[options]
+prerelease-mode = "allow"
+
 [[package]]
 name = "aioboto3"
 version = "15.5.0"
@@ -1034,7 +1037,7 @@ requires-dist = [
     { name = "iceaxe", specifier = ">=0.0.0,<1.0.0" },
     { name = "lxml", specifier = ">=5.3.0" },
     { name = "mountaineer", specifier = ">=0.20.0.dev1" },
-    { name = "mountaineer-auth", git = "https://github.com/piercefreeman/mountaineer-auth.git?branch=feature%2Fnative-runtime-coordinator" },
+    { name = "mountaineer-auth", specifier = ">=0.3.0.dev1" },
     { name = "mountaineer-billing", editable = "../" },
     { name = "playwright", specifier = ">=1.52.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -1205,8 +1208,8 @@ wheels = [
 
 [[package]]
 name = "mountaineer-auth"
-version = "0.1.1"
-source = { git = "https://github.com/piercefreeman/mountaineer-auth.git?branch=feature%2Fnative-runtime-coordinator#b8e30c109e2246b3c81ebcf36b45370f3d113c26" }
+version = "0.3.0.dev1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bcrypt" },
     { name = "email-validator" },
@@ -1217,6 +1220,10 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-jose", extra = ["cryptography"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/ba/dbb8cb8318c0db5b051d79317aeaf42b0da5523a2be3f2a8a00d42b84b19/mountaineer_auth-0.3.0.dev1.tar.gz", hash = "sha256:d7d69a9b504df68b5fb6b1860318a123a0e65602e382f3c77b7bbb3079bd329d", size = 2915661, upload-time = "2026-08-01T15:18:11.701Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/58/7f4d1200be67acd5fd0bf93643baa220aaac9e910523e3063d5e38712f30/mountaineer_auth-0.3.0.dev1-py3-none-any.whl", hash = "sha256:cbb697c008e30a78d3e8ab34761ab8d872632081c05c76e031bfb9b788210c1b", size = 2675963, upload-time = "2026-08-01T15:18:09.957Z" },
 ]
 
 [[package]]
@@ -1240,7 +1247,7 @@ requires-dist = [
     { name = "grpcio", specifier = ">=1.71.2" },
     { name = "iceaxe", specifier = ">=0.0.0,<1.0.0" },
     { name = "mountaineer", specifier = ">=0.20.0.dev1" },
-    { name = "mountaineer-auth", git = "https://github.com/piercefreeman/mountaineer-auth.git?branch=feature%2Fnative-runtime-coordinator" },
+    { name = "mountaineer-auth", specifier = ">=0.3.0.dev1" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "stripe", specifier = ">=12.1.0" },
     { name = "waymark" },
@@ -1257,16 +1264,17 @@ dev = [
 
 [[package]]
 name = "mountaineer-cloud"
-version = "0.1.2"
+version = "0.2.0.dev1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioboto3" },
     { name = "httpx" },
+    { name = "mountaineer" },
     { name = "pydantic-settings" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/08/3ce1059123d4cd1d69b8c3a8a84f4fe12ceb1255b08438b0d0c4d3aa9c39/mountaineer_cloud-0.1.2.tar.gz", hash = "sha256:09cddb0c7a87fb93b21ae253f9313cf314751adaca676a438d62e5d6de39f568", size = 970263, upload-time = "2026-03-28T20:57:41.113Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/4c/8b59c58250fb3a4d64e81128d3bb82ed658497dd9a22b9025d3153bffade/mountaineer_cloud-0.2.0.dev1.tar.gz", hash = "sha256:697d2076caab1f08443af514d23627ec7ad569099c4e668e60146485a36ddadf", size = 971953, upload-time = "2026-08-01T15:11:20.401Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/22/4c2ec9a2538d20bda4392ff5da8ce97e8b7c7080893f788b79a36b3d92cb/mountaineer_cloud-0.1.2-py3-none-any.whl", hash = "sha256:90a614087aa717755c526b1a308a9a290dd18a0d1aefcd50011e79eb2ca031f8", size = 47273, upload-time = "2026-03-28T20:57:39.806Z" },
+    { url = "https://files.pythonhosted.org/packages/02/74/8d3ba88e6d4e44045377173140d3c3e722a7d83b41d62d56b09b57a504d8/mountaineer_cloud-0.2.0.dev1-py3-none-any.whl", hash = "sha256:21145bdf845986046711c965126a5ba5ed6a88d08d555dfb418eff16c201a0b5", size = 48052, upload-time = "2026-08-01T15:11:18.844Z" },
 ]
 
 [[package]]
@@ -1283,7 +1291,7 @@ wheels = [
 
 [[package]]
 name = "mountaineer-email"
-version = "0.1.4"
+version = "0.2.0.dev1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "email-validator" },
@@ -1293,9 +1301,9 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "waymark" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/16/98/e6207a56e40d6502eeb000b935a12dfce2d4b96f2749b32a65a271ba1d2f/mountaineer_email-0.1.4.tar.gz", hash = "sha256:2896df5bc1a537323aebb20b0cab87b0d80fc17df04d566d69359d16314b2d2d", size = 592719, upload-time = "2026-04-02T18:54:07.422Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/51/23/e4e258ee0531811b86144cb9fdda825d4af627e68714572bd152aa8e90e0/mountaineer_email-0.2.0.dev1.tar.gz", hash = "sha256:723b9a1fe8d42e2311a59b2cfa35dbfa8dd0d4b65183ffe52ea31397ce9979f5", size = 1114860, upload-time = "2026-08-01T15:12:10.53Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/66/885cb91b61136892de41fe5951f0fd0ff50bbc7de72a59c0ad7f677b1517/mountaineer_email-0.1.4-py3-none-any.whl", hash = "sha256:7f125dacd4bf18aecd69c0cd1de1543b965d832af87e1178986a98dac737599a", size = 396174, upload-time = "2026-04-02T18:54:05.974Z" },
+    { url = "https://files.pythonhosted.org/packages/75/f1/f1f7118df0f687024eaf7cfa5570386e28a4c206141d9c893713d19ba477/mountaineer_email-0.2.0.dev1-py3-none-any.whl", hash = "sha256:efd6432e3e6024c5d8323d913a1c817c7999143c950ce8e53155181f3e432106", size = 918146, upload-time = "2026-08-01T15:12:09.204Z" },
 ]
 
 [[package]]
