@@ -13,8 +13,8 @@ dependencies = [
     "iceaxe>=0.0.0,<1.0.0",
     "grpcio>=1.71.2",
     "waymark",
-    "mountaineer",
-    "mountaineer-auth",
+    "mountaineer>=0.20.0.dev1",
+    "mountaineer-auth>=0.1.1",
 ]
 
 [project.scripts]
@@ -36,7 +36,7 @@ dev = [
 
 [tool.uv.sources]
 #mountaineer = { path = "../../mountaineer", editable = true }
-#mountaineer-auth = { path = "../mountaineer-auth", editable = true }
+mountaineer-auth = { git = "https://github.com/piercefreeman/mountaineer-auth.git", branch = "feature/native-runtime-coordinator" }
 
 [tool.ruff]
 force-exclude = true
