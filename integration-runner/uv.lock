@@ -1034,7 +1034,7 @@ requires-dist = [
     { name = "iceaxe", specifier = ">=0.0.0,<1.0.0" },
     { name = "lxml", specifier = ">=5.3.0" },
     { name = "mountaineer", specifier = ">=0.20.0.dev1" },
-    { name = "mountaineer-auth" },
+    { name = "mountaineer-auth", git = "https://github.com/piercefreeman/mountaineer-auth.git?branch=feature%2Fnative-runtime-coordinator" },
     { name = "mountaineer-billing", editable = "../" },
     { name = "playwright", specifier = ">=1.52.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -1205,8 +1205,8 @@ wheels = [
 
 [[package]]
 name = "mountaineer-auth"
-version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.1.1"
+source = { git = "https://github.com/piercefreeman/mountaineer-auth.git?branch=feature%2Fnative-runtime-coordinator#b8e30c109e2246b3c81ebcf36b45370f3d113c26" }
 dependencies = [
     { name = "bcrypt" },
     { name = "email-validator" },
@@ -1217,11 +1217,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-jose", extra = ["cryptography"] },
-    { name = "waymark" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/84/6c/031e5f27091f15c229f197bb3faf0d9e378596774342f83b78e419708e56/mountaineer_auth-0.1.0.tar.gz", hash = "sha256:ee78e270ba7c062696cd21fc33660dc56af960f37920c15c174e73e30f4bd1fc", size = 3113651, upload-time = "2026-03-31T18:50:46.091Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b2/b9/4dce8ad914f85169feb72ac9fa20e135add92ebab282497bf9cc0f1917ff/mountaineer_auth-0.1.0-py3-none-any.whl", hash = "sha256:162981e46bc457a2d0cac6ef02821e4e66738bdee3a3469c11ca7b3a570e8b50", size = 2916847, upload-time = "2026-03-31T18:50:44.015Z" },
 ]
 
 [[package]]
@@ -1234,7 +1229,6 @@ dependencies = [
     { name = "iceaxe" },
     { name = "mountaineer" },
     { name = "mountaineer-auth" },
-    { name = "rich" },
     { name = "stripe" },
     { name = "waymark" },
 ]
@@ -1245,8 +1239,7 @@ requires-dist = [
     { name = "grpcio", specifier = ">=1.71.2" },
     { name = "iceaxe", specifier = ">=0.0.0,<1.0.0" },
     { name = "mountaineer", specifier = ">=0.20.0.dev1" },
-    { name = "mountaineer-auth" },
-    { name = "rich", specifier = ">=13.9.4" },
+    { name = "mountaineer-auth", git = "https://github.com/piercefreeman/mountaineer-auth.git?branch=feature%2Fnative-runtime-coordinator" },
     { name = "stripe", specifier = ">=12.1.0" },
     { name = "waymark" },
 ]
@@ -1288,17 +1281,19 @@ wheels = [
 
 [[package]]
 name = "mountaineer-email"
-version = "0.1.1"
+version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "email-validator" },
     { name = "lxml" },
     { name = "mountaineer" },
     { name = "mountaineer-cloud" },
     { name = "pydantic-settings" },
+    { name = "waymark" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/ed/45b0b262d993767c80190a9d4cdeb94a6a8eb3a1b5821ba4e9f37cc9c1e5/mountaineer_email-0.1.1.tar.gz", hash = "sha256:5f10bdc3dc784a392118c47a7cc3e3298afbc84654707b8c616e6d04a8eea7a4", size = 579605, upload-time = "2026-03-27T23:47:51.228Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/98/e6207a56e40d6502eeb000b935a12dfce2d4b96f2749b32a65a271ba1d2f/mountaineer_email-0.1.4.tar.gz", hash = "sha256:2896df5bc1a537323aebb20b0cab87b0d80fc17df04d566d69359d16314b2d2d", size = 592719, upload-time = "2026-04-02T18:54:07.422Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/7e/ed6a905ef278637c5e3323efcc585d6cef9a962fb81c69ec18f3a2b5cc57/mountaineer_email-0.1.1-py3-none-any.whl", hash = "sha256:8042504873bbc7348184bb159802439dd1e3026cc8ec30f0eff852c6dfafbc31", size = 388685, upload-time = "2026-03-27T23:47:49.628Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/66/885cb91b61136892de41fe5951f0fd0ff50bbc7de72a59c0ad7f677b1517/mountaineer_email-0.1.4-py3-none-any.whl", hash = "sha256:7f125dacd4bf18aecd69c0cd1de1543b965d832af87e1178986a98dac737599a", size = 396174, upload-time = "2026-04-02T18:54:05.974Z" },
 ]
 
 [[package]]
