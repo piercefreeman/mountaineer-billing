@@ -1229,6 +1229,7 @@ dependencies = [
     { name = "iceaxe" },
     { name = "mountaineer" },
     { name = "mountaineer-auth" },
+    { name = "rich" },
     { name = "stripe" },
     { name = "waymark" },
 ]
@@ -1240,6 +1241,7 @@ requires-dist = [
     { name = "iceaxe", specifier = ">=0.0.0,<1.0.0" },
     { name = "mountaineer", specifier = ">=0.20.0.dev1" },
     { name = "mountaineer-auth", git = "https://github.com/piercefreeman/mountaineer-auth.git?branch=feature%2Fnative-runtime-coordinator" },
+    { name = "rich", specifier = ">=13.9.4" },
     { name = "stripe", specifier = ">=12.1.0" },
     { name = "waymark" },
 ]
